@@ -1,0 +1,26 @@
+#folder
+.vagrant/
+dist/
+
+#fixed file
+Thumbs.db
+.class
+.exe
+.log
+.idea
+.prefs
+.classpath
+.metadata
+.settings
+.DS_Store
+.project
+*.rar
+*.iml
+*.ipr
+*.iws
+*.tar.gz
+*.bak
+*.log
+*.swp
+*.swo
+*.sum
