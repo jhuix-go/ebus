@@ -13,11 +13,11 @@ import (
 	"github.com/hashicorp/consul/api"
 	consulWatch "github.com/hashicorp/consul/api/watch"
 
-	`github.com/jhuix-go/ebus/discovery/balancer`
-	`github.com/jhuix-go/ebus/discovery/common/attributes`
-	`github.com/jhuix-go/ebus/discovery/common/metadata`
-	`github.com/jhuix-go/ebus/discovery/watch`
-	`github.com/jhuix-go/ebus/log`
+	`github.com/jhuix-go/ebus/pkg/discovery/balancer`
+	`github.com/jhuix-go/ebus/pkg/discovery/common/attributes`
+	`github.com/jhuix-go/ebus/pkg/discovery/common/metadata`
+	`github.com/jhuix-go/ebus/pkg/discovery/watch`
+	`github.com/jhuix-go/ebus/pkg/log`
 )
 
 type nodeData struct {

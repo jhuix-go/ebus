@@ -9,10 +9,10 @@ package ebus
 import (
 	`sync`
 
-	`github.com/jhuix-go/ebus/app`
-	`github.com/jhuix-go/ebus/discovery`
-	`github.com/jhuix-go/ebus/discovery/registry`
-	`github.com/jhuix-go/ebus/log`
+	`github.com/jhuix-go/ebus/pkg/app`
+	`github.com/jhuix-go/ebus/pkg/discovery`
+	`github.com/jhuix-go/ebus/pkg/discovery/registry`
+	`github.com/jhuix-go/ebus/pkg/log`
 	`github.com/jhuix-go/ebus/server`
 )
 

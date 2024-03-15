@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	`github.com/jhuix-go/ebus/log`
+	`github.com/jhuix-go/ebus/pkg/log`
 )
 
 type ServiceInstance interface {

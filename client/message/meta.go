@@ -9,7 +9,7 @@ package message
 import (
 	`context`
 
-	`github.com/jhuix-go/ebus/discovery/common/metadata`
+	`github.com/jhuix-go/ebus/pkg/discovery/common/metadata`
 )
 
 type mdMetaKey struct{}

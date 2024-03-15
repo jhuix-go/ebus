@@ -14,8 +14,8 @@ import (
 	`go.nanomsg.org/mangos/v3`
 	mproto `go.nanomsg.org/mangos/v3/protocol`
 
+	`github.com/jhuix-go/ebus/pkg/queue`
 	"github.com/jhuix-go/ebus/protocol"
-	`github.com/jhuix-go/ebus/queue`
 )
 
 func randMapPipe(m map[uint32]*Pipe) *Pipe {

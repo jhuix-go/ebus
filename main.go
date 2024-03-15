@@ -7,8 +7,8 @@
 package main
 
 import (
-	`github.com/jhuix-go/ebus/app`
 	`github.com/jhuix-go/ebus/ebus`
+	`github.com/jhuix-go/ebus/pkg/app`
 	`github.com/jhuix-go/ebus/server`
 )
 

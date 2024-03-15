@@ -12,8 +12,8 @@ import (
 
 	"github.com/hashicorp/consul/api"
 
-	"github.com/jhuix-go/ebus/discovery/registry"
-	"github.com/jhuix-go/ebus/discovery/registry/consul"
+	"github.com/jhuix-go/ebus/pkg/discovery/registry"
+	"github.com/jhuix-go/ebus/pkg/discovery/registry/consul"
 )
 
 const defaultTtl = 30 * time.Second

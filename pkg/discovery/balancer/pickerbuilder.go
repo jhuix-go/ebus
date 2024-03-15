@@ -11,7 +11,7 @@ import (
 	`errors`
 	`strings`
 
-	`github.com/jhuix-go/ebus/discovery/common/attributes`
+	`github.com/jhuix-go/ebus/pkg/discovery/common/attributes`
 )
 
 type Address struct {

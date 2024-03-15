@@ -18,7 +18,7 @@ import (
 	mproto `go.nanomsg.org/mangos/v3/protocol`
 	`go.nanomsg.org/mangos/v3/transport/all`
 
-	`github.com/jhuix-go/ebus/log`
+	`github.com/jhuix-go/ebus/pkg/log`
 	`github.com/jhuix-go/ebus/protocol`
 )
 

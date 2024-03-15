@@ -11,8 +11,8 @@ import (
 
 	`github.com/hashicorp/consul/api`
 
-	`github.com/jhuix-go/ebus/discovery/watch`
-	`github.com/jhuix-go/ebus/discovery/watch/consul`
+	`github.com/jhuix-go/ebus/pkg/discovery/watch`
+	`github.com/jhuix-go/ebus/pkg/discovery/watch/consul`
 )
 
 func NewConsulWatch(cfg *ClientConfig, handler watch.ClientManagerHandler) (watch.Watcher, error) {

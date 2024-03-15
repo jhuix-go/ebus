@@ -10,9 +10,9 @@ import (
 	`context`
 	`sync`
 
-	`github.com/jhuix-go/ebus/discovery/balancer`
-	`github.com/jhuix-go/ebus/discovery/watch`
-	`github.com/jhuix-go/ebus/log`
+	`github.com/jhuix-go/ebus/pkg/discovery/balancer`
+	`github.com/jhuix-go/ebus/pkg/discovery/watch`
+	`github.com/jhuix-go/ebus/pkg/log`
 )
 
 type manager struct {

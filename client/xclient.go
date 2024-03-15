@@ -14,11 +14,11 @@ import (
 	`go.nanomsg.org/mangos/v3`
 	mproto `go.nanomsg.org/mangos/v3/protocol`
 
-	`github.com/jhuix-go/ebus/discovery`
-	`github.com/jhuix-go/ebus/discovery/watch`
-	`github.com/jhuix-go/ebus/log`
+	`github.com/jhuix-go/ebus/pkg/discovery`
+	`github.com/jhuix-go/ebus/pkg/discovery/watch`
+	`github.com/jhuix-go/ebus/pkg/log`
+	`github.com/jhuix-go/ebus/pkg/queue`
 	`github.com/jhuix-go/ebus/protocol`
-	`github.com/jhuix-go/ebus/queue`
 )
 
 type Options struct {

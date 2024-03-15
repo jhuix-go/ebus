@@ -10,8 +10,8 @@ import (
 	`errors`
 	`strconv`
 
-	`github.com/jhuix-go/ebus/app`
-	`github.com/jhuix-go/ebus/discovery`
+	`github.com/jhuix-go/ebus/pkg/app`
+	`github.com/jhuix-go/ebus/pkg/discovery`
 	`github.com/jhuix-go/ebus/server`
 )
 

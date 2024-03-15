@@ -13,7 +13,7 @@ import (
 	`math`
 	`unsafe`
 
-	`github.com/jhuix-go/ebus/log`
+	`github.com/jhuix-go/ebus/pkg/log`
 )
 
 type BufferRead struct {

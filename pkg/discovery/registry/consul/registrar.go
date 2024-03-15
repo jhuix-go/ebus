@@ -18,8 +18,8 @@ import (
 
 	consul "github.com/hashicorp/consul/api"
 
-	"github.com/jhuix-go/ebus/discovery/registry"
-	`github.com/jhuix-go/ebus/log`
+	"github.com/jhuix-go/ebus/pkg/discovery/registry"
+	`github.com/jhuix-go/ebus/pkg/log`
 )
 
 type Registrar struct {

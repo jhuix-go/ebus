@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	`github.com/jhuix-go/ebus/log`
+	`github.com/jhuix-go/ebus/pkg/log`
 )
 
 const defaultPprofAddress = "0.0.0.0:6060"

@@ -9,7 +9,7 @@ package message
 import (
 	`sync`
 
-	`github.com/jhuix-go/ebus/log`
+	`github.com/jhuix-go/ebus/pkg/log`
 )
 
 const (
