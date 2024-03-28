@@ -13,14 +13,17 @@ import (
 // Compressors are compressors supported by rpc. You can add customized compressor in Compressors.
 var Compressors = map[CompressType]Compressor{}
 
-const MsgVersionOne byte = 1
+const (
+	MsgVersionOne byte = 1
+	// MsgVersionTwo byte = 2
+)
 
-// MessageType is message type of requests and responses.
-type MessageType byte
+// ProtocolType is message type of requests and responses.
+type ProtocolType byte
 
 const (
 	// Request is message type of request
-	Request MessageType = iota
+	Request ProtocolType = iota
 	// Response is message type of response
 	Response
 )
@@ -65,6 +68,14 @@ const HeaderLength = 12
 
 // Header is the first part of Message and has fixed size.
 // Format:
+//   version uint8
+//   protocolType uint8:7
+//   oneway uint8:6
+//   statusType uint8:4-5
+//   serializeType uint8:0-3
+//   compressType uint8
+//   reserved uint8
+//   messageID uint64
 type Header [HeaderLength]byte
 
 func NewHeader(h []byte) *Header {
@@ -86,49 +97,49 @@ func (h *Header) SetVersion(v byte) {
 	h[0] = v
 }
 
-// SerializeType returns serialization type of payload.
-func (h *Header) SerializeType() SerializeType {
-	return SerializeType((h[1] & 0xF0) >> 4)
-}
-
-// SetSerializeType sets the serialization type.
-func (h *Header) SetSerializeType(st SerializeType) {
-	h[1] = (h[1] &^ 0xF0) | (byte(st) << 4)
-}
-
-// MessageType returns the message type.
-func (h *Header) MessageType() MessageType {
-	return MessageType(h[1] & 0x08 >> 3)
+// MessageType returns the message protocol type.
+func (h *Header) MessageType() ProtocolType {
+	return ProtocolType(h[1] & 0x80 >> 7)
 }
 
 // SetMessageType sets message type.
-func (h *Header) SetMessageType(mt MessageType) {
-	h[1] = h[1] | (byte(mt) << 3)
+func (h *Header) SetMessageType(mt ProtocolType) {
+	h[1] = h[1] | (byte(mt) << 7)
 }
 
 // IsOneway returns whether the message is one-way message.
 // If true, server won't send responses.
 func (h *Header) IsOneway() bool {
-	return h[1]&0x04 == 0x04
+	return h[1]&0x40 == 0x40
 }
 
 // SetOneway sets the oneway flag.
 func (h *Header) SetOneway(oneway bool) {
 	if oneway {
-		h[1] = h[1] | 0x04
+		h[1] = h[1] | 0x40
 	} else {
-		h[1] = h[1] &^ 0x04
+		h[1] = h[1] &^ 0x40
 	}
 }
 
 // StatusType returns the message status type.
 func (h *Header) StatusType() StatusType {
-	return StatusType(h[1] & 0x03)
+	return StatusType((h[1] & 0x30) >> 4)
 }
 
 // SetStatusType sets message status type.
 func (h *Header) SetStatusType(mt StatusType) {
-	h[1] = (h[1] &^ 0x03) | (byte(mt) & 0x03)
+	h[1] = (h[1] &^ 0x30) | ((byte(mt) << 4) & 0x30)
+}
+
+// SerializeType returns serialization type of payload.
+func (h *Header) SerializeType() SerializeType {
+	return SerializeType(h[1] & 0x0F)
+}
+
+// SetSerializeType sets the serialization type.
+func (h *Header) SetSerializeType(st SerializeType) {
+	h[1] = (h[1] &^ 0x0F) | (byte(st) & 0x0F)
 }
 
 // CompressType returns compression type of messages.

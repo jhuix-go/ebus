@@ -8,6 +8,7 @@ package server
 
 import (
 	`math/rand`
+	`slices`
 	"sync"
 	"time"
 
@@ -18,24 +19,51 @@ import (
 	"github.com/jhuix-go/ebus/protocol"
 )
 
-func randMapPipe(m map[uint32]*Pipe) *Pipe {
-	r := rand.Intn(len(m))
-	for _, v := range m {
-		if r == 0 {
-			return v
-		}
+// func randMapPipe(m map[uint32]*Pipe) *Pipe {
+// 	r := rand.Intn(len(m))
+// 	for _, v := range m {
+// 		if r == 0 {
+// 			return v
+// 		}
+//
+// 		r--
+// 	}
+// 	return nil
+// }
 
-		r--
+func randPipe(m []*Pipe) *Pipe {
+	if len(m) == 0 {
+		return nil
 	}
-	return nil
+
+	if len(m) == 1 {
+		return m[0]
+	}
+
+	n := rand.Intn(len(m))
+	return m[n]
+}
+
+func hashPipe(hash uint64, m []*Pipe) *Pipe {
+	if len(m) == 0 {
+		return nil
+	}
+
+	if len(m) == 1 {
+		return m[0]
+	}
+
+	n := hash % uint64(len(m))
+	return m[n]
 }
 
 type Protocol struct {
-	closed     bool
-	closeQ     chan struct{}
-	sizeQ      chan struct{}
-	pipes      map[uint32]*Pipe
-	eventPipes map[uint32]map[uint32]*Pipe
+	closed bool
+	closeQ chan struct{}
+	sizeQ  chan struct{}
+	pipes  map[uint32]*Pipe
+	// eventPipes map[uint32]map[uint32]*Pipe
+	eventPipes map[uint32][]*Pipe
 	recvQLen   int
 	sendQLen   int
 	recvExpire time.Duration
@@ -66,7 +94,7 @@ func (s *Protocol) SendMsg(m *mproto.Message) error {
 		return mproto.ErrClosed
 	}
 
-	if len(m.Header) != protocol.DefaultHeaderLength {
+	if len(m.Header) != protocol.DefaultHeaderLength && len(m.Header) != protocol.DefaultHashHeaderLength {
 		return protocol.ErrBadHeader
 	}
 
@@ -78,15 +106,20 @@ func (s *Protocol) SendMsg(m *mproto.Message) error {
 	}
 
 	if dest > 0 {
-		signalling := h.Signalling()
-		highSignalling := signalling & ^protocol.SignallingCommand
-		switch highSignalling {
+		switch h.SignallingType() {
 		case protocol.SignallingEvent: // dest is event
 			if pipes, ok := s.eventPipes[dest]; ok {
-				p := randMapPipe(pipes)
+				// p := randMapPipe(pipes)
+				var p *Pipe
+				if h.HasHash() {
+					hash := h.Hash()
+					p = hashPipe(hash, pipes)
+				} else {
+					p = randPipe(pipes)
+				}
 				if p != nil {
 					m.Clone()
-					h.SetSignalling(protocol.SignallingAssign)
+					h.SetSignallingType(protocol.SignallingAssign)
 					h.SetDest(p.p.ID())
 					select {
 					case p.sendQ.EnqueueC() <- m:
@@ -154,10 +187,9 @@ func (s *Protocol) RecvMsg() (*mproto.Message, error) {
 			m, p := entry.m, entry.p
 			h := protocol.Header{Data: m.Header}
 			// control signalling be not transmit
-			highSignalling := h.Signalling() & ^protocol.SignallingCommand
-			if highSignalling == protocol.SignallingControl {
-				if h.Signalling()&protocol.SignallingCommand == protocol.SignallingRegisterEvent {
-					_ = s.addEventPipe(h.Dest(), p)
+			if h.SignallingType() == protocol.SignallingControl {
+				if h.IsRegisterEvent() {
+					_ = s.addEventPipe(p.Event(), p)
 				}
 				m.Free()
 				continue
@@ -240,10 +272,14 @@ func (s *Protocol) addEventPipe(event uint32, p *Pipe) error {
 	p.event = event
 	pipes, ok := s.eventPipes[event]
 	if !ok {
-		pipes = make(map[uint32]*Pipe)
-		s.eventPipes[event] = pipes
+		// pipes = make(map[uint32]*Pipe)
+		pipes = make([]*Pipe, 0, 1)
+		// s.eventPipes[event] = pipes
 	}
-	pipes[p.p.ID()] = p
+	// pipes[p.p.ID()] = p
+	pipes = append(pipes, p)
+	s.eventPipes[event] = pipes
+
 	ph := s.hook
 	s.Unlock()
 
@@ -286,9 +322,14 @@ func (s *Protocol) RemovePipe(pp mproto.Pipe) {
 		s.Lock()
 		delete(s.pipes, pp.ID())
 		if pipes, ok := s.eventPipes[p.event]; ok {
-			delete(pipes, pp.ID())
-			if len(s.eventPipes) == 0 {
+			// delete(pipes, pp.ID())
+			pipes = slices.DeleteFunc(pipes, func(pe *Pipe) bool {
+				return pe == p
+			})
+			if len(pipes) == 0 {
 				delete(s.eventPipes, p.event)
+			} else {
+				s.eventPipes[p.event] = pipes
 			}
 		}
 		s.Unlock()
@@ -385,8 +426,9 @@ func (s *Protocol) pipeEventHook(pe mangos.PipeEvent, mp mangos.Pipe) {
 // NewProtocol returns a new protocol implementation.
 func NewProtocol() *Protocol {
 	s := &Protocol{
-		pipes:      make(map[uint32]*Pipe),
-		eventPipes: make(map[uint32]map[uint32]*Pipe),
+		pipes: make(map[uint32]*Pipe),
+		// eventPipes: make(map[uint32]map[uint32]*Pipe),
+		eventPipes: make(map[uint32][]*Pipe),
 		closeQ:     make(chan struct{}),
 		sizeQ:      make(chan struct{}),
 		recvQ:      make(chan recvQEntry, defaultQLen),

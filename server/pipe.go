@@ -26,7 +26,6 @@ type Pipe struct {
 	sendQ      *queue.Queue[*mproto.Message]
 	recvExpire time.Duration
 	data       interface{}
-	// sendQ      chan *mproto.Message
 }
 
 type recvQEntry struct {
@@ -137,9 +136,15 @@ outer:
 			continue outer
 		}
 
-		m.Header = append(m.Header, m.Body[:protocol.DefaultHeaderLength]...)
-		h := protocol.Header{Data: m.Header}
+		headerLength := protocol.DefaultHeaderLength
+		h := protocol.Header{Data: m.Body[:headerLength]}
 		if h.Flag() != protocol.DefaultFlag {
+			m.Free()
+			break
+		}
+
+		headerLength = int(h.HeaderLength())
+		if headerLength < protocol.DefaultHeaderLength || headerLength > protocol.MaxHeaderLength {
 			m.Free()
 			break
 		}
@@ -151,15 +156,14 @@ outer:
 		cq := p.closeQ
 		s.Unlock()
 
-		m.Body = m.Body[protocol.DefaultHeaderLength:]
-		// register event and response register remote
-		if h.IsRegisterEvent() {
+		m.Header = m.Body[:headerLength]
+		m.Body = m.Body[headerLength:]
+		if h.IsRegisterEvent() { // register event and response register remote
 			p.remote = h.Src()
 			p.event = h.Dest()
 			m.Clone()
 			h.SetDest(p.remote)
 			h.SetSrc(pp.ID())
-			h.SetSignalling(protocol.SignallingControl | protocol.SignallingRegisterRemote)
 			select {
 			case sq.EnqueueC() <- m:
 			case <-cq:
@@ -167,12 +171,7 @@ outer:
 			default:
 				m.Free()
 			}
-			m.Free()
-			continue
-		}
-
-		// response heart
-		if h.IsHeart() {
+		} else if h.IsHeart() { // response heart
 			m.Clone()
 			h.SetDest(h.Src())
 			h.SetSrc(pp.ID())

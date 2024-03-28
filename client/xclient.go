@@ -168,7 +168,7 @@ func (c *XClient) PickSendEvent(hash string, eventId uint32, data []byte) error 
 	}
 
 	src := p.ID()
-	return c.SendEvent(src, eventId, data)
+	return c.SendEvent(src, eventId, 0, data)
 }
 
 func (c *XClient) PickSend(hash string, dest uint32, data []byte) error {

@@ -40,7 +40,7 @@ func (c *Call) done() {
 	}
 }
 
-func (c *XClient) send(ctx context.Context, sendEvent bool, src, dest uint32, call *Call) {
+func (c *XClient) send(ctx context.Context, sendEvent bool, src, dest uint32, eventHash uint64, call *Call) {
 	// meta := message.DecodeMetaContext(ctx)
 	// if meta == nil {
 	//	return
@@ -82,15 +82,21 @@ func (c *XClient) send(ctx context.Context, sendEvent bool, src, dest uint32, ca
 		return
 	}
 
-	spL := len(call.ServicePath)
-	smL := len(call.ServiceMethod)
-	totalL := message.HeaderLength + 4 + (4 + spL) + (4 + smL) + (4 + message.SizeMeta(call.ReqMetadata)) + (4 + len(data))
+	totalL := message.HeaderLength + 4 + (4 + message.SizeMeta(call.ReqMetadata)) + (4 + len(data))
 	m := mangos.NewMessage(totalL)
 	signalling := protocol.SignallingAssign
 	if sendEvent {
 		signalling = protocol.SignallingEvent
+		if eventHash != 0 {
+			signalling = protocol.SignallingEventHash
+		}
 	}
-	m.Header = protocol.PutHeader(m.Header, src, signalling, dest)
+
+	if signalling == protocol.SignallingEventHash {
+		m.Header = protocol.PutHashHeader(m.Header, src, dest, eventHash)
+	} else {
+		m.Header = protocol.PutHeader(m.Header, src, signalling, dest)
+	}
 	req := message.GetMessage()
 	defer req.Free()
 
@@ -195,7 +201,7 @@ func (c *XClient) receive(m *mangos.Message) (*mangos.Message, error) {
 		}
 		if len(res.Metadata) > 0 {
 			call.ResMetadata = res.Metadata
-			call.Error = errors.New(res.Metadata[message.ServiceError])
+			call.Error = errors.New(res.Metadata[message.XServiceError])
 		}
 		call.done()
 	default:
@@ -225,8 +231,8 @@ func (c *XClient) receive(m *mangos.Message) (*mangos.Message, error) {
 // the invocation. The done channel will signal when the call is complete by returning
 // the same Call object. If done is nil, Go will allocate a new channel.
 // If non-nil, done must be buffered or Go will deliberately crash.
-func (c *XClient) Go(ctx context.Context, sendEvent bool, src, dest uint32, servicePath, serviceMethod string,
-		args interface{}, reply interface{}, done chan *Call) *Call {
+func (c *XClient) Go(ctx context.Context, sendEvent bool, src, dest uint32, eventHash uint64,
+		servicePath, serviceMethod string, args interface{}, reply interface{}, done chan *Call) *Call {
 	if done == nil {
 		done = make(chan *Call, 10) // buffered.
 	} else {
@@ -256,14 +262,14 @@ func (c *XClient) Go(ctx context.Context, sendEvent bool, src, dest uint32, serv
 		log.Debugf("c.Go send request for %s.%s, args: %+v in case of client call", servicePath, serviceMethod, args)
 	}
 
-	go c.send(ctx, sendEvent, src, dest, call)
+	go c.send(ctx, sendEvent, src, dest, eventHash, call)
 
 	return call
 }
 
 // Call invokes the named function, waits for it to complete, and returns its error status.
-func (c *XClient) Call(ctx context.Context, sendEvent bool, src, dest uint32, servicePath, serviceMethod string,
-		args interface{}, reply interface{}) error {
+func (c *XClient) Call(ctx context.Context, sendEvent bool, src, dest uint32, eventHash uint64,
+		servicePath, serviceMethod string, args interface{}, reply interface{}) error {
 	if c.opt.Trace {
 		log.Debugf("c.call for %s.%s, args: %+v in case of client call", servicePath, serviceMethod, args)
 		defer func() {
@@ -275,7 +281,7 @@ func (c *XClient) Call(ctx context.Context, sendEvent bool, src, dest uint32, se
 	if c.opt.IdleTimeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, c.opt.IdleTimeout)
 	}
-	call := c.Go(ctx, sendEvent, src, dest, servicePath, serviceMethod, args, reply, make(chan *Call, 1))
+	call := c.Go(ctx, sendEvent, src, dest, eventHash, servicePath, serviceMethod, args, reply, make(chan *Call, 1))
 
 	var err error
 	select {

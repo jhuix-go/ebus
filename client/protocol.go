@@ -161,7 +161,7 @@ func (s *Protocol) RecvMsg() (*mproto.Message, error) {
 				continue
 			}
 
-			if h.IsRegisterRemote() {
+			if h.IsRegisterEvent() {
 				hook(protocol.PipeEventRegistered, p)
 				m.Free()
 				continue
@@ -423,12 +423,14 @@ func (s *Protocol) pipeEventHook(pe mangos.PipeEvent, mp mangos.Pipe) {
 				ph(pe, p)
 			}
 		case mangos.PipeEventDetached:
-			p := pp.GetPrivate().(*Pipe)
-			if ph != nil {
-				ph(pe, p)
+			p, _ := pp.GetPrivate().(*Pipe)
+			if p != nil {
+				if ph != nil {
+					ph(pe, p)
+				}
+				p.release()
+				pp.SetPrivate(nil)
 			}
-			p.release()
-			pp.SetPrivate(nil)
 		default:
 			if ph != nil {
 				ph(pe, pp.GetPrivate().(*Pipe))

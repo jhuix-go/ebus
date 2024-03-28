@@ -11,7 +11,7 @@ package queue
 // Enqueue 接口会阻塞直到可以元素放入队列中，阻塞的情况只在队列满的时候才会出现
 // Dequeue 接口会阻塞直到队列中有元素返回，阻塞的情况只在队列空的时候才会出现
 type Queue[T any] struct {
-	l    Deque[T]
+	l    *Deque[T]
 	max  int
 	done chan struct{}
 	in   chan T // use to enqueue
@@ -23,6 +23,7 @@ type Queue[T any] struct {
 // 注意调用Destroy()后就不可执行入队出队操作，否则会一直阻塞下去。
 func NewQueueWithSize[T any](max int, inChanSize int) *Queue[T] {
 	q := &Queue[T]{
+		l:    NewDeque[T](),
 		max:  max,
 		done: make(chan struct{}),
 		in:   make(chan T, inChanSize),
@@ -56,7 +57,6 @@ func (q *Queue[T]) dispatch() {
 			// the queue is full, only dequeue is allowed.
 			select {
 			case q.out <- e:
-				q.l.Remove(0)
 			case <-q.done:
 				return
 			}
@@ -66,7 +66,6 @@ func (q *Queue[T]) dispatch() {
 			case v := <-q.in:
 				q.l.PushBack(v)
 			case q.out <- e:
-				q.l.Remove(0)
 			case <-q.done:
 				return
 			}

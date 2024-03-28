@@ -217,6 +217,21 @@ func (b *BufferRead) Varchar() string {
 	return *(*string)(unsafe.Pointer(&data))
 }
 
+func (b *BufferRead) SmallVarchar() string {
+	if b.err != nil {
+		return ""
+	}
+
+	size := int(b.Byte())
+	if b.off+size > b.Len() {
+		size = b.Len() - b.off
+		log.Errorf("decode uint64 error - {off: %d, len: %d, size: %d}", b.off, size, b.Len())
+	}
+	data := b.buf[b.off : b.off+size]
+	b.off += size
+	return *(*string)(unsafe.Pointer(&data))
+}
+
 func (b *BufferRead) DumpSize(size int) string {
 	if b.off+size > b.Len() {
 		size = b.Len() - b.off
@@ -319,4 +334,10 @@ func (b *BufferWrite) AppendString(s string) {
 func (b *BufferWrite) AppendVarchar(s string) {
 	b.AppendInt(len(s))
 	b.buf = append(b.buf, s[:]...)
+}
+
+func (b *BufferWrite) AppendSmallVarchar(s string) {
+	size := byte(len(s))
+	b.AppendByte(size)
+	b.buf = append(b.buf, s[:size]...)
 }

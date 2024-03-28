@@ -13,11 +13,19 @@ import (
 )
 
 const (
-	// ServiceError contains error info of service invocation
-	ServiceError = "__service_error__"
+	// XServiceError contains error info of service invocation
+	XServiceError  = "X-Service-Error"
+	XServicePath   = "X-Service-Path"
+	XServiceMethod = "X-Service-Method"
 )
 
 // Message is the generic type of Request and Response.
+// Version-One Format:
+//   header [12]byte
+//   metadata_length int
+//   metadata []KV
+//   payload_length int
+//   payload  [payload_length-4]byte
 type Message struct {
 	Header
 	ServicePath   string
@@ -69,8 +77,6 @@ func (m *Message) Clone() *Message {
 func (m *Message) Encode(data []byte) []byte {
 	buf := &BufferWrite{buf: data}
 	buf.AppendBytes(m.Header[:])
-	spL := len(m.ServicePath)
-	smL := len(m.ServiceMethod)
 	payload := m.Payload
 	if m.CompressType() != None {
 		compressor := Compressors[m.CompressType()]
@@ -87,12 +93,17 @@ func (m *Message) Encode(data []byte) []byte {
 			}
 		}
 	}
+
+	if len(m.ServicePath) > 0 {
+		m.AddMeta(XServicePath, m.ServicePath)
+	}
+	if len(m.ServiceMethod) > 0 {
+		m.AddMeta(XServiceMethod, m.ServiceMethod)
+	}
 	mdL := SizeMeta(m.Metadata)
 	dataL := len(payload)
-	totalL := 4 + (4 + spL) + (4 + smL) + (4 + mdL) + (4 + dataL)
-	buf.AppendInt(totalL)
-	buf.AppendVarchar(m.ServicePath)
-	buf.AppendVarchar(m.ServiceMethod)
+	// totalL := 4 + (4 + mdL) + (4 + dataL)
+	// buf.AppendInt(totalL)
 	buf.AppendInt(mdL)
 	encodeMeta(m.Metadata, buf)
 	buf.AppendInt(dataL)
@@ -100,12 +111,19 @@ func (m *Message) Encode(data []byte) []byte {
 	return buf.Detach()
 }
 
-func SizeMeta(m map[string]string) (n int) {
-	for k, v := range m {
-		n += len(k) + 4
-		n += len(v) + 4
+func (m *Message) AddMeta(k, v string) {
+	if m.Metadata == nil {
+		m.Metadata = make(map[string]string)
 	}
-	return
+	m.Metadata[k] = v
+}
+
+func SizeMeta(m map[string]string) int {
+	// for k, v := range m {
+	// 	n += len(k) + 1
+	// 	n += len(v) + 4
+	// }
+	return len(m)
 }
 
 // len,string,len,string,......
@@ -114,21 +132,25 @@ func encodeMeta(m map[string]string, bb *BufferWrite) {
 		return
 	}
 	for k, v := range m {
-		bb.AppendVarchar(k)
+		bb.AppendSmallVarchar(k)
 		bb.AppendVarchar(v)
 	}
 }
 
 func decodeMeta(bb *BufferRead) (map[string]string, error) {
 	l := bb.Int()
-	if l <= 0 {
-		return nil, ErrMetadataIsEmpty
+	if l == 0 {
+		return nil, nil
 	}
 
-	m := make(map[string]string, 10)
+	if l < 0 {
+		return nil, ErrMetadataTooLong
+	}
+
+	m := make(map[string]string, l)
 	n := 0
 	for n < l {
-		k := bb.Varchar()
+		k := bb.SmallVarchar()
 		if len(k) == 0 {
 			return nil, ErrMetaKVMissing
 		}
@@ -139,6 +161,7 @@ func decodeMeta(bb *BufferRead) (map[string]string, error) {
 		}
 
 		m[k] = v
+		n++
 	}
 
 	return m, nil
@@ -153,23 +176,22 @@ func (m *Message) Decode(data []byte) error {
 	}
 
 	buf := &BufferRead{buf: data[HeaderLength:]}
-	totalSize := buf.Int()
-	if totalSize > buf.Len() {
-		log.Errorf("wrong message size: %v", totalSize)
-		return ErrTooLongSize
-	}
-
-	m.ServicePath = buf.Varchar()
-	m.ServiceMethod = buf.Varchar()
-
 	meta, err := decodeMeta(buf)
 	if err != nil {
 		return err
 	}
 
 	m.Metadata = meta
+	if len(m.Metadata) > 0 {
+		m.ServicePath, _ = m.Metadata[XServicePath]
+		m.ServiceMethod, _ = m.Metadata[XServiceMethod]
+	}
+	payloadSize := buf.Int()
+	if payloadSize > (buf.Len() - buf.Offset() - 4) {
+		log.Errorf("wrong message size: %v", payloadSize)
+		return ErrMessageTooLong
+	}
 
-	_ = buf.Int()
 	m.Payload, _ = buf.Buf()
 	if m.CompressType() != None {
 		compressor := Compressors[m.CompressType()]

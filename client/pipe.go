@@ -119,15 +119,23 @@ outer:
 			continue
 		}
 
-		m.Header = append(m.Header, m.Body[:protocol.DefaultHeaderLength]...)
-		h := protocol.Header{Data: m.Header}
+		headerLength := protocol.DefaultHeaderLength
+		h := protocol.Header{Data: m.Body[:headerLength]}
 		if h.Flag() != protocol.DefaultFlag {
 			m.Free()
 			break
 		}
 
-		m.Body = m.Body[protocol.DefaultHeaderLength:]
-		if h.IsRegisterRemote() {
+		headerLength = int(h.HeaderLength())
+		if headerLength < protocol.DefaultHeaderLength || headerLength > protocol.MaxHeaderLength {
+			m.Free()
+			continue
+		}
+
+		// m.Header = append(m.Header, m.Body[:headerLength]...)
+		m.Header = m.Body[:headerLength]
+		m.Body = m.Body[headerLength:]
+		if h.IsRegisterEvent() {
 			p.remote = h.Src()
 		}
 		s.Lock()

@@ -16,7 +16,7 @@ type mdMetaKey struct{}
 
 func SizeMetadata(meta metadata.MD) (n int) {
 	for k, vs := range meta {
-		n += len(k) + 4
+		n += len(k) + 1
 		for _, v := range vs {
 			n += len(v) + 4
 		}

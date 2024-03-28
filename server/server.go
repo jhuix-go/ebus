@@ -137,9 +137,13 @@ func (s *Server) Listen(addr string) error {
 	return nil
 }
 
-func (s *Server) SendEvent(src, event uint32, data []byte) error {
+func (s *Server) SendEvent(src, event uint32, hash uint64, data []byte) error {
 	m := mangos.NewMessage(len(data))
-	m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingEvent, event)
+	if hash != 0 {
+		m.Header = protocol.PutHashHeader(m.Header, src, event, hash)
+	} else {
+		m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingEvent, event)
+	}
 	m.Body = append(m.Body, data...)
 	if err := s.socket.SendMsg(m); err != nil {
 		m.Free()

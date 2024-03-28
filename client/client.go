@@ -361,9 +361,13 @@ func (c *Client) Stop() {
 	log.Infof("<event> event client stopped")
 }
 
-func (c *Client) SendEvent(src uint32, eventId uint32, data []byte) error {
+func (c *Client) SendEvent(src uint32, eventId uint32, hash uint64, data []byte) error {
 	m := mangos.NewMessage(len(data))
-	m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingEvent, eventId)
+	if hash != 0 {
+		m.Header = protocol.PutHashHeader(m.Header, src, eventId, hash)
+	} else {
+		m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingEvent, eventId)
+	}
 	m.Body = append(m.Body, data...)
 	if err := c.socket.SendMsg(m); err != nil {
 		m.Free()
