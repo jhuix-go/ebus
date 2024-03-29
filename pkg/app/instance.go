@@ -84,6 +84,10 @@ func (w *WaterConfigProxy) OnConfigChange(cfg Config) {
 			w.options.Level = options.Level
 			log.SetLevel(options.Level)
 		}
+		w.options.Async = options.Async
+		if options.Level > log.NoneLevel {
+			log.SetAsync(options.Async)
+		}
 		if options.MaxBackups != w.options.MaxBackups {
 			w.options.MaxBackups = options.MaxBackups
 			ops = append(ops, log.WithMaxBackupsConfig(options.MaxBackups, true))
@@ -147,7 +151,7 @@ func initLogOption(cfg Config) log.Options {
 	options := log.NewOptions()
 	options.OutDir = OutLogPath
 	if cfg != nil {
-		_ = cfg.Sub("log").Unmarshal(options)
+		_ = cfg.Sub("log").Unmarshal(&options)
 	}
 	if len(options.Filename) == 0 {
 		options.Filename = strings.ToLower(ApplicationName) + ".info.log"

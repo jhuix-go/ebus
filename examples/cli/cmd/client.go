@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2024 jhuix. All rights reserved.
- * Use of this source code is governed by a MIT license
+ * Use of this source code is governed by a license
  * that can be found in the LICENSE file.
  */
 
@@ -20,7 +20,7 @@ type ClientHandler struct{}
 func (h *ClientHandler) OnPipeConnected(p protocol.Pipe) {}
 func (h *ClientHandler) OnPipeDataArrived(p protocol.Pipe, msg interface{}) error {
 	m := msg.(*mproto.Message)
-	log.Infof("event %s pipe data arrived: %s %s", protocol.StringEvent(p.Event()), protocol.StringHeader(m.Header), string(m.Body))
+	log.Infof("event %s pipe data arrived: %s %s", protocol.EventName(p.Event()), protocol.StringHeader(m.Header), string(m.Body))
 	return nil
 }
 func (h *ClientHandler) OnPipeClosed(p protocol.Pipe) {}
@@ -82,7 +82,7 @@ var cltQueryCmd = &grumble.Command{
 			printHeadline("id              event      remote           address")
 			ebClt.RangePipes(func(id uint32, p protocol.Pipe) bool {
 				printf("%10d      %s       %10d       %s<->%s",
-					id, protocol.StringEvent(p.Event()), p.RemoteID(), p.LocalAddr(), p.RemoteAddr())
+					id, protocol.EventName(p.Event()), p.RemoteID(), p.LocalAddr(), p.RemoteAddr())
 				return true
 			})
 			return nil
@@ -95,7 +95,7 @@ var cltQueryCmd = &grumble.Command{
 
 		printHeadline("id              event      remote           address")
 		printf("%10d      %s       %10d       %s<->%s",
-			id, protocol.StringEvent(p.Event()), p.RemoteID(), p.LocalAddr(), p.RemoteAddr())
+			id, protocol.EventName(p.Event()), p.RemoteID(), p.LocalAddr(), p.RemoteAddr())
 		return nil
 	},
 }

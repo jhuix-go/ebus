@@ -99,20 +99,12 @@ func PutHashHeader(header []byte, src uint32, dest uint32, hash uint64) []byte {
 
 func StringHeader(header []byte) string {
 	h := Header{Data: header}
-	flag := string(h.Data[:2])
-	if h.Signalling()&SignallingEvent != 0 || h.Dest() == PipeEbus {
-		dest := string(h.Data[8:12])
-		return fmt.Sprintf("{\"flag\":\"%s\",\"signalling\":0x%x,\"src\":%d,\"dest\":\"%s\"}",
-			flag, h.Signalling(), h.Src(), dest)
-	}
-
-	return fmt.Sprintf("{\"flag\":\"%s\",\"signalling\":0x%x,\"src\":%d,\"dest\":%d}",
-		flag, h.Signalling(), h.Src(), h.Dest())
+	return h.String()
 }
 
-func StringEvent(event uint32) string {
+func EventName(event uint32) string {
 	var buf [4]byte
-	binary.BigEndian.PutUint32(buf[:4], event)
+	binary.BigEndian.PutUint32(buf[:4], event&0x7FFFFFFF)
 	return string(buf[:])
 }
 
@@ -124,9 +116,23 @@ func EventNameN(name string) uint32 {
 		for i := 0; i < length; i++ {
 			buf[i] = name[i]
 		}
-		id = binary.BigEndian.Uint32(buf[:4])
+		id = binary.BigEndian.Uint32(buf[:4]) | 0x80000000
 	}
 	return id
+}
+
+func (h *Header) String() string {
+	flag := h.Data[:2]
+	if h.IsEvent() || h.Dest() == PipeEbus {
+		var dest [4]byte
+		copy(dest[:], h.Data[8:12])
+		dest[0] &= 0x7F
+		return fmt.Sprintf("{\"flag\":\"%s\",\"signalling\":0x%x,\"src\":%d,\"dest\":\"%s\"}",
+			flag, h.Signalling(), h.Src(), dest)
+	}
+
+	return fmt.Sprintf("{\"flag\":\"%s\",\"signalling\":0x%x,\"src\":%d,\"dest\":%d}",
+		flag, h.Signalling(), h.Src(), h.Dest())
 }
 
 func (h *Header) Flag() uint16 {
@@ -167,6 +173,10 @@ func (h *Header) SignallingType() uint8 {
 
 func (h *Header) SetSignallingType(v uint8) {
 	h.Data[3] = (h.Data[3] & SignallingCommand) | v
+}
+
+func (h *Header) IsEvent() bool {
+	return h.Signalling()&SignallingEvent == SignallingEvent
 }
 
 func (h *Header) IsHeart() bool {

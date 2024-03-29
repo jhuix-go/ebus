@@ -184,7 +184,7 @@ func (c *Client) pipeEventHook(pe mangos.PipeEvent, pp protocol.Pipe) interface{
 	switch pe {
 	case mangos.PipeEventAttaching:
 		c.onConnection(pp)
-		log.Infof("<event> %s connection attaching: %s", protocol.StringEvent(eventId), protocol.Link(pp))
+		log.Infof("<event> %s connection attaching: %s", protocol.EventName(eventId), protocol.Link(pp))
 		if !c.establish {
 			c.establish = true
 			c.wg.Add(1)
@@ -192,12 +192,12 @@ func (c *Client) pipeEventHook(pe mangos.PipeEvent, pp protocol.Pipe) interface{
 		}
 	case mangos.PipeEventAttached:
 		c.registerEvent(pp)
-		log.Infof("<event> %s connection attached: %s", protocol.StringEvent(eventId), protocol.Link(pp))
+		log.Infof("<event> %s connection attached: %s", protocol.EventName(eventId), protocol.Link(pp))
 	case mangos.PipeEventDetached:
-		log.Infof("<event> %s connection closed: %s", protocol.StringEvent(eventId), protocol.Link(pp))
+		log.Infof("<event> %s connection closed: %s", protocol.EventName(eventId), protocol.Link(pp))
 		c.onClose(pp)
 	case protocol.PipeEventRegistered:
-		log.Infof("<event> %s connection register remote: %s", protocol.StringEvent(eventId), protocol.Link(pp))
+		log.Infof("<event> %s connection register remote: %s", protocol.EventName(eventId), protocol.Link(pp))
 	case protocol.PipeEventHeartBeat:
 		return c.pipeHeartHook(pp)
 	default:
@@ -371,7 +371,7 @@ func (c *Client) SendEvent(src uint32, eventId uint32, hash uint64, data []byte)
 	m.Body = append(m.Body, data...)
 	if err := c.socket.SendMsg(m); err != nil {
 		m.Free()
-		log.Errorf("<event> %d<->%s, send error: %s", src, protocol.StringEvent(eventId), err)
+		log.Errorf("<event> %d<->%s, send error: %s", src, protocol.EventName(eventId), err)
 		return err
 	}
 

@@ -101,6 +101,10 @@ func (q *Queue[T]) DequeueC() <-chan T {
 	return q.out
 }
 
+func (q *Queue[T]) Clear() {
+	q.l.Clear()
+}
+
 func (q *Queue[T]) Destroy() {
 	// cancel dispatch goroutine
 	if q.done != nil {

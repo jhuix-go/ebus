@@ -18,6 +18,7 @@ type Options struct {
 	MaxAge     int    `json:"max_age" yaml:"max_age" toml:"max_age"`
 	Compress   bool   `json:"compress" yaml:"compress" toml:"compress"`
 	Level      int    `json:"level" yaml:"level" toml:"level"`
+	Async      bool   `json:"async" yaml:"async" toml:"async"`
 }
 
 var defaultOptions = Options{
@@ -28,6 +29,7 @@ var defaultOptions = Options{
 	MaxAge:     15,
 	Compress:   true,
 	Level:      int(slog.InfoLevel),
+	Async:      false,
 }
 
 func NewOptions() Options {
@@ -78,7 +80,7 @@ func WithMaxAgeOption(maxAge int, filterDefault bool) WithOption {
 
 func WithLevelOption(level int, filterDefault bool) WithOption {
 	return WithOption(func(o *Options) {
-		if !filterDefault || level > 0 {
+		if !filterDefault || level != 0 {
 			o.Level = level
 		}
 	})
@@ -87,5 +89,11 @@ func WithLevelOption(level int, filterDefault bool) WithOption {
 func WithCompressOption(compress bool) WithOption {
 	return WithOption(func(o *Options) {
 		o.Compress = compress
+	})
+}
+
+func WithAsyncOption(async bool) WithOption {
+	return WithOption(func(o *Options) {
+		o.Async = async
 	})
 }

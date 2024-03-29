@@ -107,13 +107,29 @@ func (s *Server) SetReadTimeout(v time.Duration) {
 func (s *Server) pipeEventHook(pe mangos.PipeEvent, pp protocol.Pipe) interface{} {
 	switch pe {
 	case mangos.PipeEventAttaching:
-		log.Infof("<ebus> connection attaching: %s", protocol.Link(pp))
+		log.WithInfo("<ebus> connection attaching: %s").WithField(pp, func(v any) any {
+			return protocol.Link(v.(protocol.Pipe))
+		}).Log()
 	case mangos.PipeEventAttached:
-		log.Infof("<ebus> connection attached: %s", protocol.Link(pp))
+		log.WithInfo("<ebus> connection attached: %s").WithField(pp, func(v any) any {
+			return protocol.Link(v.(protocol.Pipe))
+		}).Log()
+		// log.Infof("<ebus> connection attached: %s", protocol.Link(pp))
 	case mangos.PipeEventDetached:
-		log.Infof("<ebus> connection closed: %s", protocol.Link(pp))
+		log.WithInfo("<ebus> connection closed: %s").WithField(pp, func(v any) any {
+			return protocol.Link(v.(protocol.Pipe))
+		}).Log()
+		// log.Infof("<ebus> connection closed: %s", protocol.Link(pp))
 	case protocol.PipeEventRegistered:
-		log.Infof("<ebus> connection registered as %s event: %s", protocol.StringEvent(pp.Event()), protocol.Link(pp))
+		log.WithInfo("<ebus> connection registered as %s event: %s").WithFields(log.Fields{
+			{pp, func(v any) any {
+				return protocol.EventName(v.(protocol.Pipe).Event())
+			}},
+			{pp, func(v any) any {
+				return protocol.Link(v.(protocol.Pipe))
+			}},
+		}).Log()
+		// log.Infof("<ebus> connection registered as %s event: %s", protocol.EventName(pp.Event()), protocol.Link(pp))
 	default:
 	}
 	return nil
@@ -147,7 +163,7 @@ func (s *Server) SendEvent(src, event uint32, hash uint64, data []byte) error {
 	m.Body = append(m.Body, data...)
 	if err := s.socket.SendMsg(m); err != nil {
 		m.Free()
-		log.Errorf("<ebus> %d<->%s, send error: %s", src, protocol.StringEvent(event), err)
+		log.Errorf("<ebus> %d<->%s, send error: %s", src, protocol.EventName(event), err)
 		return err
 	}
 
@@ -217,7 +233,7 @@ func (s *Server) Serve() {
 		}
 
 		log.Debugf("<ebus> recv message: event=%s header=%s, data_size=%d",
-			protocol.StringEvent(protocol.PipeEvent(m.Pipe)), protocol.StringHeader(m.Header), len(m.Body))
+			protocol.EventName(protocol.PipeEvent(m.Pipe)), protocol.StringHeader(m.Header), len(m.Body))
 		h := protocol.Header{Data: m.Header}
 		if h.Dest() == protocol.PipeEbus {
 			m.Free()

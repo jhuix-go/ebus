@@ -8,28 +8,309 @@ package log
 
 import (
 	`path`
+	`runtime`
+	`strconv`
+	`sync`
+	`sync/atomic`
+	`time`
 
 	`github.com/gookit/slog`
 	`github.com/gookit/slog/handler`
 	`github.com/gookit/slog/rotatefile`
+
+	`github.com/jhuix-go/ebus/pkg/queue`
 )
 
+func getCaller(callerSkip int) (string, int) {
+	pcs := make([]uintptr, 1) // alloc 1 times
+	num := runtime.Callers(callerSkip, pcs)
+	if num < 1 {
+		return "", 0
+	}
+
+	f, _ := runtime.CallersFrames(pcs).Next()
+	if f.PC == 0 {
+		return "", 0
+	}
+
+	return f.File, f.Line
+}
+
+const (
+	argNormal = iota
+	argJson
+)
+
+type Record struct {
+	q         *queue.Queue[*Record]
+	level     slog.Level
+	timestamp time.Time
+	fileName  string
+	lineNum   int
+	format    string
+	args      []Field
+}
+
+func newRecord(q *queue.Queue[*Record]) *Record {
+	return &Record{q: q}
+}
+
+func (e *Record) WithLevel(level int) Entry {
+	e.level = slog.Level(level * int(slog.PanicLevel))
+	return e
+}
+
+func (e *Record) WithTime(t time.Time) Entry {
+	e.timestamp = t
+	return e
+}
+
+func (e *Record) WithFormat(f string) Entry {
+	e.format = f
+	return e
+}
+
+func (e *Record) WithField(v any, call FieldCall) Entry {
+	e.args = append(e.args, Field{v, call})
+	return e
+}
+
+func (e *Record) WithFields(fields Fields) Entry {
+	e.args = append(e.args, fields...)
+	return e
+}
+
+func (e *Record) withCaller(callerSkip int) Entry {
+	e.fileName, e.lineNum = getCaller(callerSkip)
+	return e
+}
+
+func (e *Record) record() {
+	var (
+		args   []any
+		format string
+	)
+	for _, arg := range e.args {
+		if arg.Call != nil {
+			args = append(args, arg.Call(arg.Value))
+		} else {
+			args = append(args, arg.Value)
+		}
+	}
+	if len(e.fileName) != 0 {
+		format = " " + e.fileName + ":" + strconv.Itoa(e.lineNum) + " "
+	}
+	format += e.format
+	switch e.level {
+	case slog.ErrorLevel:
+		slog.Errorf(format, args...)
+	case slog.WarnLevel:
+		slog.Warnf(format, args...)
+	case slog.InfoLevel:
+		slog.Infof(format, args...)
+	case slog.DebugLevel:
+		slog.Debugf(format, args...)
+	default:
+		slog.Tracef(format, args...)
+	}
+}
+
+func (e *Record) Log() {
+	if e.q != nil {
+		e.q.Enqueue(e)
+		return
+	}
+
+	e.record()
+}
+
+var recordPool = sync.Pool{
+	New: func() interface{} {
+		return &Record{}
+	},
+}
+
 type logger struct {
+	q     *queue.Queue[*Record]
+	wg    sync.WaitGroup
+	done  chan struct{}
+	async atomic.Bool
+	level slog.Level
+}
+
+func (l *logger) newRecord() *Record {
+	q := l.q
+	if !l.async.Load() {
+		q = nil
+	}
+	r := recordPool.Get().(*Record)
+	r.q = q
+	return r
+}
+
+func releaseRecord(r *Record) {
+	r.q = nil
+	r.args = nil
+	r.format = ""
+	r.level = slog.Level(0)
+	recordPool.Put(r)
+}
+
+func newLogger() *logger {
+	l := &logger{
+		q:     queue.NewQueueWithSize[*Record](1024, 128),
+		done:  make(chan struct{}),
+		level: slog.InfoLevel,
+	}
+	return l
+}
+
+func record(e *Record) {
+	e.record()
+	releaseRecord(e)
+}
+
+func (l *logger) dispatch() {
+	l.async.Store(true)
+	if l.done == nil {
+		l.done = make(chan struct{})
+	}
+	q := l.q
+	done := l.done
+	defer l.wg.Done()
+
+	for {
+		select {
+		case e := <-q.DequeueC():
+			record(e)
+		case <-done:
+			l.async.Store(false)
+			// processing the remaining logs
+			for {
+				select {
+				case e := <-l.q.DequeueC():
+					record(e)
+				default:
+					return
+				}
+			}
+		}
+	}
+}
+
+func (l *logger) startAsync() {
+	l.wg.Add(1)
+	go l.dispatch()
+}
+
+func (l *logger) closeAsync() {
+	var done chan struct{}
+	done, l.done = l.done, nil
+	if done != nil {
+		close(done)
+	}
+	l.wg.Wait()
+}
+
+func (l *logger) SetAsync(async bool) {
+	if l.async.CompareAndSwap(!async, async) {
+		if l.async.Load() {
+			l.startAsync()
+		} else {
+			l.closeAsync()
+		}
+	}
+}
+
+var callerSkip = 5
+
+func (l *logger) WithError(format string) Entry {
+	if !l.level.ShouldHandling(slog.ErrorLevel) {
+		return DefaultEmptyEntry
+	}
+
+	return l.newRecord().withCaller(callerSkip).WithLevel(ErrorLevel).WithTime(time.Now()).WithFormat(format)
+}
+
+func (l *logger) WithWarn(format string) Entry {
+	if !l.level.ShouldHandling(slog.WarnLevel) {
+		return DefaultEmptyEntry
+	}
+
+	return l.newRecord().withCaller(callerSkip).WithLevel(WarnLevel).WithTime(time.Now()).WithFormat(format)
+}
+
+func (l *logger) WithInfo(format string) Entry {
+	if !l.level.ShouldHandling(slog.InfoLevel) {
+		return DefaultEmptyEntry
+	}
+
+	return l.newRecord().withCaller(callerSkip).WithLevel(InfoLevel).WithTime(time.Now()).WithFormat(format)
+}
+
+func (l *logger) WithDebug(format string) Entry {
+	if !l.level.ShouldHandling(slog.DebugLevel) {
+		return DefaultEmptyEntry
+	}
+
+	return l.newRecord().withCaller(callerSkip).WithLevel(DebugLevel).WithTime(time.Now()).WithFormat(format)
 }
 
 func (l *logger) Errorf(format string, v ...any) {
-	slog.Errorf(format, v...)
+	if !l.level.ShouldHandling(slog.ErrorLevel) {
+		return
+	}
+
+	e := l.newRecord()
+	e.withCaller(callerSkip).WithLevel(ErrorLevel).WithTime(time.Now()).WithFormat(format)
+	for _, a := range v {
+		e.WithField(a, nil)
+	}
+	e.Log()
 }
 func (l *logger) Warnf(format string, v ...any) {
-	slog.Warnf(format, v...)
+	if !l.level.ShouldHandling(slog.WarnLevel) {
+		return
+	}
+
+	e := l.newRecord()
+	e.withCaller(callerSkip).WithLevel(WarnLevel).WithTime(time.Now()).WithFormat(format)
+	for _, a := range v {
+		e.WithField(a, nil)
+	}
+	e.Log()
 }
 func (l *logger) Infof(format string, v ...any) {
-	slog.Infof(format, v...)
+	if !l.level.ShouldHandling(slog.InfoLevel) {
+		return
+	}
+
+	e := l.newRecord()
+	e.withCaller(callerSkip).WithLevel(InfoLevel).WithTime(time.Now()).WithFormat(format)
+	for _, a := range v {
+		e.WithField(a, nil)
+	}
+	e.Log()
 }
 func (l *logger) Debugf(format string, v ...any) {
-	slog.Debugf(format, v...)
+	if !l.level.ShouldHandling(slog.DebugLevel) {
+		return
+	}
+
+	e := l.newRecord()
+	e.withCaller(callerSkip).WithLevel(DebugLevel).WithTime(time.Now()).WithFormat(format)
+	for _, a := range v {
+		e.WithField(a, nil)
+	}
+	e.Log()
+}
+
+func (l *logger) SetLevel(level int) {
+	l.level = slog.Level(level * int(slog.PanicLevel))
+	slog.SetLogLevel(l.level)
 }
 func (l *logger) Close() {
+	l.closeAsync()
 	_ = slog.Close()
 }
 
@@ -57,7 +338,15 @@ func SetConfig(ops ...WithConfig) {
 }
 
 func SetLevel(level int) {
-	slog.SetLogLevel(slog.Level(level))
+	if level > NoneLevel {
+		if _, ok := defaultLogger.(*EmptyLogger); ok {
+			defaultLogger = newLogger()
+		}
+		defaultLogger.SetLevel(level)
+		return
+	}
+
+	Close()
 }
 
 func WithLevelConfig(level int, filterDefault bool) WithConfig {
@@ -111,7 +400,8 @@ func InitLogger(appName string, o *Options) {
 	ops := make([]WithOption, 0, 7)
 	ops = append(ops, WithOutDirOption(o.OutDir, true), WithFileNameOption(o.Filename, true),
 		WithMaxSizeOption(o.MaxSize, true), WithMaxBackupsOption(o.MaxBackups, true),
-		WithMaxAgeOption(o.MaxAge, true), WithLevelOption(o.Level, true), WithCompressOption(o.Compress))
+		WithMaxAgeOption(o.MaxAge, true), WithLevelOption(o.Level, true),
+		WithCompressOption(o.Compress), WithAsyncOption(o.Async))
 	for _, op := range ops {
 		op(&opt)
 	}
@@ -120,16 +410,22 @@ func InitLogger(appName string, o *Options) {
 	slog.Std().ChannelName = slog.DefaultChannelName
 	slog.Std().CallerSkip = 8
 	slog.Std().CallerFlag = slog.CallerFlagFpLine
+	slog.Std().ReportCaller = false
 	if tf, ok := slog.Std().Formatter.(*slog.TextFormatter); ok {
 		tf.TimeFormat = slog.DefaultTimeFormat
-		tf.SetTemplate("[{{datetime}}] [{{channel}}] [{{level}}] {{caller}} {{message}} {{data}} {{extra}}\n")
+		tf.SetTemplate("[{{datetime}}] [{{channel}}] [{{level}}] {{message}} {{data}} {{extra}}\n")
 	}
 	fileName := path.Join(opt.OutDir, appName+opt.Filename)
 	maxSize := uint64(opt.MaxSize) * rotatefile.OneMByte
 	bt := rotatefile.RotateTime(opt.MaxBackups) * rotatefile.EveryDay
 	rt := rotatefile.RotateTime(opt.MaxAge) * rotatefile.EveryDay
-	level := slog.Level(o.Level)
+	level := slog.Level(opt.Level * int(slog.PanicLevel))
 	h1, _ := newRotateFileHandler(fileName, level, rt, handler.WithMaxSize(maxSize), handler.WithBackupTime(uint(bt)))
-	// h2 := handler.ConsoleWithMaxLevel(slog.Level(o.Level))
 	slog.PushHandler(h1)
+	if opt.Level > NoneLevel {
+		l := newLogger()
+		l.SetAsync(opt.Async)
+		defaultLogger = l
+		defaultLogger.SetLevel(opt.Level)
+	}
 }

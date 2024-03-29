@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2024 jhuix. All rights reserved.
- * Use of this source code is governed by a MIT license
+ * Use of this source code is governed by a license
  * that can be found in the LICENSE file.
  */
 
@@ -21,10 +21,15 @@ func sprintf(format string, v ...any) {
 
 type logger struct{}
 
-func (l *logger) Errorf(format string, v ...any) { sprintf(format, v...) }
-func (l *logger) Warnf(format string, v ...any)  { sprintf(format, v...) }
-func (l *logger) Infof(format string, v ...any)  { sprintf(format, v...) }
-func (l *logger) Debugf(format string, v ...any) { sprintf(format, v...) }
+func (l *logger) WithError(format string) log.Entry { return log.DefaultEmptyEntry }
+func (l *logger) WithWarn(format string) log.Entry  { return log.DefaultEmptyEntry }
+func (l *logger) WithInfo(format string) log.Entry  { return log.DefaultEmptyEntry }
+func (l *logger) WithDebug(format string) log.Entry { return log.DefaultEmptyEntry }
+func (l *logger) Errorf(format string, v ...any)    { sprintf(format, v...) }
+func (l *logger) Warnf(format string, v ...any)     { sprintf(format, v...) }
+func (l *logger) Infof(format string, v ...any)     { sprintf(format, v...) }
+func (l *logger) Debugf(format string, v ...any)    { sprintf(format, v...) }
+func (l *logger) SetLevel(level int)                {}
 
 var defaultLogger = &logger{}
 

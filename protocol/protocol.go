@@ -29,7 +29,7 @@ const (
 )
 
 const (
-	PipeEbus = 0x65627573 // ebus
+	PipeEbus = 0x65627573 | 0x80000000 // ebus
 )
 
 type Pipe interface {
