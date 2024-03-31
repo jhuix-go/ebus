@@ -7,8 +7,8 @@
 package protocol
 
 import (
-	`encoding/binary`
-	`fmt`
+	"encoding/binary"
+	"fmt"
 )
 
 // const (
@@ -29,14 +29,15 @@ const (
 )
 
 // Signalling Format (UINT8):
-//    7   6   5   4   3   2   1   0
-//    *   *   *   *   *   *   *   *
-//    │   │   │   │   │           │
-//    └─┬─┘   │   │   └─────┬─────┘
-//   Reserve  │   │      Command - 0x00 ~ 0x0F
-//            │   └> Event - 0x10
-//            └> Control - 0x20
-//   0    0   0   0 -> Assign - 0x00
+//
+//	 7   6   5   4   3   2   1   0
+//	 *   *   *   *   *   *   *   *
+//	 │   │   │   │   │           │
+//	 └─┬─┘   │   │   └─────┬─────┘
+//	Reserve  │   │      Command - 0x00 ~ 0x0F
+//	         │   └> Event - 0x10
+//	         └> Control - 0x20
+//	0    0   0   0 -> Assign - 0x00
 const (
 	SignallingCommand       uint8 = 0x0F
 	SignallingAssign        uint8 = 0x00
@@ -119,6 +120,10 @@ func EventNameN(name string) uint32 {
 		id = binary.BigEndian.Uint32(buf[:4]) | 0x80000000
 	}
 	return id
+}
+
+func IsEventID(v uint32) bool {
+	return (v & 0x80000000) != 0
 }
 
 func (h *Header) String() string {

@@ -7,6 +7,8 @@
 package cmd
 
 import (
+	"strconv"
+
 	"github.com/desertbit/grumble"
 	mproto "go.nanomsg.org/mangos/v3/protocol"
 
@@ -100,13 +102,56 @@ var cltQueryCmd = &grumble.Command{
 	},
 }
 
+// var cltSendCmd = &grumble.Command{
+// 	Name: "send",
+// 	Help: "send event pipe message of client",
+// 	Args: func(a *grumble.Args) {
+// 		a.Uint("src", "src of event pipe", grumble.Default(uint(0)))
+// 		a.Uint("dest", "dest of event pipe", grumble.Default(uint(0)))
+// 		a.String("data", "message data for send", grumble.Default(""))
+// 	},
+// 	Run: func(c *grumble.Context) error {
+// 		headColorPrintf("send event pipe message of client:")
+// 		if ebClt == nil {
+// 			return ErrServerNotExist
+// 		}
+//
+// 		src := c.Args.Uint("src")
+// 		if src == 0 {
+// 			return ErrParamsIsEmpty
+// 		}
+//
+// 		dest := c.Args.Uint("dest")
+// 		if dest == 0 {
+// 			return ErrParamsIsEmpty
+// 		}
+//
+// 		data := c.Args.String("data")
+// 		if len(data) == 0 {
+// 			return ErrParamsIsEmpty
+// 		}
+//
+// 		if err := ebClt.Send(uint32(src), uint32(dest), []byte(data)); err != nil {
+// 			return err
+// 		}
+//
+// 		log.Infof("send message succeed: %d->%d %s", src, dest, data)
+// 		return nil
+// 	},
+// }
+
 var cltSendCmd = &grumble.Command{
 	Name: "send",
 	Help: "send event pipe message of client",
-	Args: func(a *grumble.Args) {
-		a.Uint("src", "src of event pipe", grumble.Default(uint(0)))
-		a.Uint("dest", "dest of event pipe", grumble.Default(uint(0)))
-		a.String("data", "message data for send", grumble.Default(""))
+	Flags: func(fs *grumble.Flags) {
+		fs.Bool("e", "event", false, "send event data mode")
+		fs.Uint64("s", "hash", 0, "use hash for select event")
+	},
+	Args: func(as *grumble.Args) {
+		as.Uint("src", "src of event pipe", grumble.Default(uint(0)))
+		as.String("dest", "dest of event pipe", grumble.Default(""))
+		// as.Uint64("hash", "hash of event pipe", grumble.Default(uint64(0)))
+		as.String("data", "message data for send", grumble.Default(""))
 	},
 	Run: func(c *grumble.Context) error {
 		headColorPrintf("send event pipe message of client:")
@@ -114,13 +159,13 @@ var cltSendCmd = &grumble.Command{
 			return ErrServerNotExist
 		}
 
-		src := c.Args.Uint("src")
+		src := uint32(c.Args.Uint("src"))
 		if src == 0 {
 			return ErrParamsIsEmpty
 		}
 
-		dest := c.Args.Uint("dest")
-		if dest == 0 {
+		destArg := c.Args.String("dest")
+		if len(destArg) == 0 {
 			return ErrParamsIsEmpty
 		}
 
@@ -129,47 +174,15 @@ var cltSendCmd = &grumble.Command{
 			return ErrParamsIsEmpty
 		}
 
-		if err := ebClt.Send(uint32(src), uint32(dest), []byte(data)); err != nil {
-			return err
+		var dest uint32
+		if c.Flags.Bool("event") {
+			dest = protocol.EventNameN(destArg)
+		} else {
+			v, _ := strconv.Atoi(destArg)
+			dest = uint32(v)
 		}
-
-		log.Infof("send message succeed: %d->%d %s", src, dest, data)
-		return nil
-	},
-}
-
-var cltSendEventCmd = &grumble.Command{
-	Name: "sendevent",
-	Help: "send event pipe message of client",
-	Args: func(a *grumble.Args) {
-		a.Uint("src", "src of event pipe", grumble.Default(uint(0)))
-		a.String("dest", "dest of event pipe", grumble.Default(""))
-		a.Uint64("hash", "hash of event pipe", grumble.Default(uint64(0)))
-		a.String("data", "message data for send", grumble.Default(""))
-	},
-	Run: func(c *grumble.Context) error {
-		headColorPrintf("send event pipe message of client:")
-		if ebClt == nil {
-			return ErrServerNotExist
-		}
-
-		src := c.Args.Uint("src")
-		if src == 0 {
-			return ErrParamsIsEmpty
-		}
-
-		dest := c.Args.String("dest")
-		if len(dest) == 0 {
-			return ErrParamsIsEmpty
-		}
-
-		hash := c.Args.Uint64("hash")
-		data := c.Args.String("data")
-		if len(data) == 0 {
-			return ErrParamsIsEmpty
-		}
-
-		if err := ebClt.SendEvent(uint32(src), protocol.EventNameN(dest), hash, []byte(data)); err != nil {
+		hash := c.Flags.Uint64("hash")
+		if err := ebClt.SendData(src, dest, hash, []byte(data)); err != nil {
 			return err
 		}
 
@@ -214,7 +227,6 @@ func init() {
 	clientCmd.AddCommand(cltRunCmd)
 	clientCmd.AddCommand(cltQueryCmd)
 	clientCmd.AddCommand(cltSendCmd)
-	clientCmd.AddCommand(cltSendEventCmd)
 	clientCmd.AddCommand(cltCloseCmd)
 	App.AddCommand(clientCmd)
 }

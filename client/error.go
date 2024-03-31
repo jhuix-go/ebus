@@ -7,10 +7,11 @@
 package client
 
 import (
-	`errors`
+	"errors"
 )
 
 var (
 	ErrShutdown         = errors.New("connection is shut down")
 	ErrUnsupportedCodec = errors.New("unsupported codec")
+	ErrInvalidEvent     = errors.New("invalid event")
 )

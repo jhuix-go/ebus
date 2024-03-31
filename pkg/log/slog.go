@@ -98,7 +98,10 @@ func (e *Record) record() {
 		}
 	}
 	if len(e.fileName) != 0 {
-		format = " " + e.fileName + ":" + strconv.Itoa(e.lineNum) + " "
+		format = e.fileName + ":" + strconv.Itoa(e.lineNum) + " "
+	}
+	if !e.timestamp.IsZero() {
+		format = "[" + e.timestamp.Format(slog.DefaultTimeFormat) + "] " + format
 	}
 	format += e.format
 	switch e.level {
@@ -417,7 +420,7 @@ func InitLogger(appName string, o *Options) {
 	slog.Std().ReportCaller = false
 	if tf, ok := slog.Std().Formatter.(*slog.TextFormatter); ok {
 		tf.TimeFormat = slog.DefaultTimeFormat
-		tf.SetTemplate("[{{datetime}}] [{{channel}}] [{{level}}] {{message}} {{data}} {{extra}}\n")
+		tf.SetTemplate("[{{channel}}] [{{level}}] {{message}} {{data}} {{extra}}\n")
 	}
 	fileName := path.Join(opt.OutDir, appName+opt.Filename)
 	maxSize := uint64(opt.MaxSize) * rotatefile.OneMByte

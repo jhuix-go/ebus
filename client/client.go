@@ -363,31 +363,19 @@ func (c *Client) Stop() {
 	log.Infof("<event> event client stopped")
 }
 
-func (c *Client) SendEvent(src uint32, eventId uint32, hash uint64, data []byte) error {
-	m := mangos.NewMessage(len(data))
-	if hash != 0 {
-		m.Header = protocol.PutHashHeader(m.Header, src, eventId, hash)
-	} else {
-		m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingEvent, eventId)
-	}
-	m.Body = append(m.Body, data...)
-	if err := c.socket.SendMsg(m); err != nil {
-		m.Free()
-		log.Errorf("<event> %d<->%s, send error: %s", src, protocol.EventName(eventId), err)
-		return err
-	}
-
-	return nil
-}
-
-func (c *Client) Send(src, dest uint32, data []byte) error {
-	m := mangos.NewMessage(len(data))
+func (c *Client) SendMessage(src uint32, dest uint32, hash uint64, m *mangos.Message) error {
 	signalling := protocol.SignallingAssign
-	if dest == c.event {
+	if protocol.IsEventID(dest) {
 		signalling = protocol.SignallingEvent
+		if hash != 0 {
+			signalling |= protocol.SignallingHash
+		}
 	}
-	m.Header = protocol.PutHeader(m.Header, src, signalling, dest)
-	m.Body = append(m.Body, data...)
+	if signalling == protocol.SignallingEventHash {
+		m.Header = protocol.PutHashHeader(m.Header, src, dest, hash)
+	} else {
+		m.Header = protocol.PutHeader(m.Header, src, signalling, dest)
+	}
 	if err := c.socket.SendMsg(m); err != nil {
 		m.Free()
 		log.Errorf("<event> %d<->%d, send error: %s", src, dest, err)
@@ -395,6 +383,16 @@ func (c *Client) Send(src, dest uint32, data []byte) error {
 	}
 
 	return nil
+}
+
+func (c *Client) SendData(src, dest uint32, hash uint64, data []byte) error {
+	m := mangos.NewMessage(len(data))
+	m.Body = append(m.Body, data...)
+	return c.SendMessage(src, dest, hash, m)
+}
+
+func (c *Client) Send(src, dest uint32, data []byte) error {
+	return c.SendData(src, dest, 0, data)
 }
 
 func (c *Client) Broadcast(data []byte) error {

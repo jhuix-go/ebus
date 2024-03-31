@@ -161,22 +161,12 @@ func (c *XClient) Pick(hash string) (protocol.Pipe, error) {
 	return p, nil
 }
 
-func (c *XClient) PickSendEvent(hash string, eventId uint32, data []byte) error {
-	p, err := c.Pick(hash)
+func (c *XClient) PickSend(srcHash string, dest uint32, destHash uint64, data []byte) error {
+	p, err := c.Pick(srcHash)
 	if err != nil {
 		return err
 	}
 
 	src := p.RemoteID()
-	return c.SendEvent(src, eventId, 0, data)
-}
-
-func (c *XClient) PickSend(hash string, dest uint32, data []byte) error {
-	p, err := c.Pick(hash)
-	if err != nil {
-		return err
-	}
-
-	src := p.RemoteID()
-	return c.Send(src, dest, data)
+	return c.SendData(src, dest, destHash, data)
 }
