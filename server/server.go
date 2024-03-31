@@ -42,7 +42,7 @@ func NewServer(cfg *Config) *Server {
 		if cfg.ReadTimeout > 0 {
 			config.ReadTimeout = cfg.ReadTimeout
 		}
-		config.DataErrorContinue = cfg.DataErrorContinue
+		config.TraceMessage = cfg.TraceMessage
 	}
 	cfg = &config
 	all.AddTransports(nil)
@@ -66,6 +66,10 @@ func NewServer(cfg *Config) *Server {
 		proto:  proto,
 		socket: socket,
 	}
+}
+
+func (s *Server) SetTraceMessage(trace bool) {
+	s.cfg.TraceMessage = trace
 }
 
 func (s *Server) SetSendSize(v int) {
@@ -213,15 +217,17 @@ func (s *Server) Serve() {
 		m, err := s.socket.RecvMsg()
 		if err != nil {
 			log.Errorf("<ebus> recv message error: %v", err)
-			if errors.Is(err, mangos.ErrClosed) || !s.cfg.DataErrorContinue {
+			if errors.Is(err, mangos.ErrClosed) {
 				break
 			}
 
 			continue
 		}
 
-		log.Debugf("<ebus> recv message: event=%s header=%s, data_size=%d",
-			protocol.EventName(protocol.PipeEvent(m.Pipe)), protocol.StringHeader(m.Header), len(m.Body))
+		if s.cfg.TraceMessage {
+			log.Debugf("<ebus> recv message: event=%s header=%s, data_size=%d",
+				protocol.EventName(protocol.PipeEvent(m.Pipe)), protocol.StringHeader(m.Header), len(m.Body))
+		}
 		h := protocol.Header{Data: m.Header}
 		if h.Dest() == protocol.PipeEbus {
 			m.Free()
@@ -237,7 +243,6 @@ func (s *Server) Serve() {
 }
 
 func (s *Server) Close() error {
-	s.cfg.DataErrorContinue = false
 	return s.socket.Close()
 }
 

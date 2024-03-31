@@ -7,12 +7,12 @@
 package ebus
 
 import (
-	`errors`
-	`strconv`
+	"errors"
+	"strconv"
 
-	`github.com/jhuix-go/ebus/pkg/app`
-	`github.com/jhuix-go/ebus/pkg/discovery`
-	`github.com/jhuix-go/ebus/server`
+	"github.com/jhuix-go/ebus/pkg/app"
+	"github.com/jhuix-go/ebus/pkg/discovery"
+	"github.com/jhuix-go/ebus/server"
 )
 
 type AppConfig struct {
@@ -47,6 +47,10 @@ func (s *Service) ReloadConfig(cfg app.Config) error {
 		return nil
 	}
 
+	if s.cfg.Service.TraceMessage != config.Service.TraceMessage {
+		s.cfg.Service.TraceMessage = config.Service.TraceMessage
+		s.svr.SetTraceMessage(config.Service.TraceMessage)
+	}
 	return nil
 }
 

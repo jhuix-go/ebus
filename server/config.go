@@ -7,22 +7,22 @@
 package server
 
 import (
-	`time`
+	"time"
 )
 
 type Config struct {
-	Address           string        `json:"address" yaml:"address" toml:"address"`
-	SendChanSize      int           `json:"send_chan_size" yaml:"send_chan_size" toml:"send_chan_size"`
-	RecvChanSize      int           `json:"recv_chan_size" yaml:"recv_chan_size" toml:"recv_chan_size"`
-	DataErrorContinue bool          `json:"data_error_continue,omitempty" yaml:"data_error_continue,omitempty" toml:"data_error_continue,omitempty"`
-	ReadTimeout       time.Duration `json:"read_timeout" yaml:"read_timeout" toml:"read_timeout"`
+	Address      string        `json:"address" yaml:"address" toml:"address"`
+	TraceMessage bool          `json:"trace_message,omitempty" yaml:"trace_message,omitempty" toml:"trace_message,omitempty"`
+	SendChanSize int           `json:"send_chan_size" yaml:"send_chan_size" toml:"send_chan_size"`
+	RecvChanSize int           `json:"recv_chan_size" yaml:"recv_chan_size" toml:"recv_chan_size"`
+	ReadTimeout  time.Duration `json:"read_timeout" yaml:"read_timeout" toml:"read_timeout"`
 	// WriteTimeout   time.Duration `json:"write_timeout" yaml:"write_timeout" toml:"write_timeout"`
 }
 
 var defaultServerConfig = Config{
-	Address:           "tcp://0.0.0.0:8171",
-	SendChanSize:      128,
-	RecvChanSize:      128,
-	DataErrorContinue: true,
-	ReadTimeout:       time.Second * 60,
+	Address:      "tcp://0.0.0.0:8171",
+	SendChanSize: 128,
+	RecvChanSize: 128,
+	TraceMessage: false,
+	ReadTimeout:  time.Second * 60,
 }
