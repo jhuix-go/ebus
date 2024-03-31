@@ -7,15 +7,17 @@
 package server
 
 import (
-	`math/rand`
-	`slices`
+	"fmt"
+	"math/rand/v2"
+	"slices"
 	"sync"
 	"time"
 
-	`go.nanomsg.org/mangos/v3`
-	mproto `go.nanomsg.org/mangos/v3/protocol`
+	"github.com/jhuix-go/ebus/pkg/log"
+	"go.nanomsg.org/mangos/v3"
+	mproto "go.nanomsg.org/mangos/v3/protocol"
 
-	`github.com/jhuix-go/ebus/pkg/queue`
+	"github.com/jhuix-go/ebus/pkg/queue"
 	"github.com/jhuix-go/ebus/protocol"
 )
 
@@ -40,7 +42,7 @@ func randPipe(m []*Pipe) *Pipe {
 		return m[0]
 	}
 
-	n := rand.Intn(len(m))
+	n := rand.IntN(len(m))
 	return m[n]
 }
 
@@ -289,10 +291,26 @@ func (s *Protocol) addEventPipe(event uint32, p *Pipe) error {
 	return nil
 }
 
+func (s *Protocol) String() string {
+	info := s.Info()
+	return fmt.Sprintf("{\"self\":%d,\"self_name\":\"%s\",\"peer\":%d,\"peer_name\":\"%s\"}",
+		info.Self, info.SelfName, info.Peer, info.PeerName)
+}
+
+func (s *Protocol) registerEvent(p *Pipe) {
+	m := mangos.NewMessage(0)
+	defer m.Free()
+	m.Header = protocol.PutHeader(m.Header, protocol.PipeEbus,
+		protocol.SignallingControl|protocol.SignallingRegisterEvent, p.ID())
+	if err := p.SendMsg(m); err != nil {
+		log.Errorf("<ebus> %s, register event error: %s", s.String(), err)
+	}
+}
+
 func (s *Protocol) AddPipe(pp mproto.Pipe) error {
 	s.Lock()
-	defer s.Unlock()
 	if s.closed {
+		s.Unlock()
 		return mproto.ErrClosed
 	}
 
@@ -311,7 +329,9 @@ func (s *Protocol) AddPipe(pp mproto.Pipe) error {
 	}
 	s.pipes[pp.ID()] = p
 	pp.SetPrivate(p)
+	s.Unlock()
 
+	s.registerEvent(p)
 	go p.sender()
 	go p.receiver()
 	return nil
@@ -410,11 +430,13 @@ func (s *Protocol) pipeEventHook(pe mangos.PipeEvent, mp mangos.Pipe) {
 			}
 		case mangos.PipeEventDetached:
 			p := pp.GetPrivate().(*Pipe)
-			if ph != nil {
-				ph(pe, p)
+			if p != nil {
+				if ph != nil {
+					ph(pe, p)
+				}
+				p.release()
+				pp.SetPrivate(nil)
 			}
-			p.release()
-			pp.SetPrivate(nil)
 		default:
 			if ph != nil {
 				ph(pe, pp.GetPrivate().(*Pipe))

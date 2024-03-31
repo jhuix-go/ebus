@@ -7,17 +7,17 @@
 package server
 
 import (
-	`errors`
-	`fmt`
-	`runtime/debug`
-	`sync`
-	`time`
+	"errors"
+	"fmt"
+	"runtime/debug"
+	"sync"
+	"time"
 
-	`go.nanomsg.org/mangos/v3`
-	`go.nanomsg.org/mangos/v3/transport/all`
+	"go.nanomsg.org/mangos/v3"
+	"go.nanomsg.org/mangos/v3/transport/all"
 
-	`github.com/jhuix-go/ebus/pkg/log`
-	`github.com/jhuix-go/ebus/protocol`
+	"github.com/jhuix-go/ebus/pkg/log"
+	"github.com/jhuix-go/ebus/protocol"
 )
 
 type Server struct {
@@ -107,29 +107,17 @@ func (s *Server) SetReadTimeout(v time.Duration) {
 func (s *Server) pipeEventHook(pe mangos.PipeEvent, pp protocol.Pipe) interface{} {
 	switch pe {
 	case mangos.PipeEventAttaching:
-		log.WithInfo("<ebus> connection attaching: %s").WithField(pp, func(v any) any {
-			return protocol.Link(v.(protocol.Pipe))
-		}).Log()
+		log.Infof("<ebus> connection attaching: %s(%d)<->%s(%d)",
+			pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
 	case mangos.PipeEventAttached:
-		log.WithInfo("<ebus> connection attached: %s").WithField(pp, func(v any) any {
-			return protocol.Link(v.(protocol.Pipe))
-		}).Log()
-		// log.Infof("<ebus> connection attached: %s", protocol.Link(pp))
+		log.Infof("<ebus> connection attached: %s(%d)<->%s(%d)",
+			pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
 	case mangos.PipeEventDetached:
-		log.WithInfo("<ebus> connection closed: %s").WithField(pp, func(v any) any {
-			return protocol.Link(v.(protocol.Pipe))
-		}).Log()
-		// log.Infof("<ebus> connection closed: %s", protocol.Link(pp))
+		log.Infof("<ebus> connection closed: %s(%d)<->%s(%d)",
+			pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
 	case protocol.PipeEventRegistered:
-		log.WithInfo("<ebus> connection registered as %s event: %s").WithFields(log.Fields{
-			{pp, func(v any) any {
-				return protocol.EventName(v.(protocol.Pipe).Event())
-			}},
-			{pp, func(v any) any {
-				return protocol.Link(v.(protocol.Pipe))
-			}},
-		}).Log()
-		// log.Infof("<ebus> connection registered as %s event: %s", protocol.EventName(pp.Event()), protocol.Link(pp))
+		log.Infof("<ebus> connection registered as %s event service: %s(%d)<->%s(%d)",
+			protocol.EventName(pp.Event()), pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
 	default:
 	}
 	return nil

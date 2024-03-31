@@ -7,14 +7,14 @@
 package server
 
 import (
-	`net`
-	`time`
+	"net"
+	"time"
 
-	`go.nanomsg.org/mangos/v3`
-	mproto `go.nanomsg.org/mangos/v3/protocol`
+	"go.nanomsg.org/mangos/v3"
+	mproto "go.nanomsg.org/mangos/v3/protocol"
 
-	`github.com/jhuix-go/ebus/pkg/queue`
-	`github.com/jhuix-go/ebus/protocol`
+	"github.com/jhuix-go/ebus/pkg/queue"
+	"github.com/jhuix-go/ebus/protocol"
 )
 
 type Pipe struct {
@@ -158,27 +158,15 @@ outer:
 
 		m.Header = m.Body[:headerLength]
 		m.Body = m.Body[headerLength:]
-		if h.IsRegisterEvent() { // register event and response register remote
+		if h.IsRegisterEvent() { // register event and register remote
 			p.remote = h.Src()
 			p.event = h.Dest()
-			m.Clone()
-			h.SetDest(p.remote)
-			h.SetSrc(pp.ID())
-			select {
-			case sq.EnqueueC() <- m:
-			case <-cq:
-				m.Free()
-			default:
-				m.Free()
-			}
 		} else if h.IsHeart() { // response heart
 			m.Clone()
-			h.SetDest(h.Src())
-			h.SetSrc(pp.ID())
+			h.SetDest(pp.ID())
+			h.SetSrc(protocol.PipeEbus)
 			select {
 			case sq.EnqueueC() <- m:
-			case <-cq:
-				m.Free()
 			default:
 				m.Free()
 			}
@@ -186,7 +174,6 @@ outer:
 			continue
 		}
 
-		h.SetSrc(pp.ID())
 		entry := recvQEntry{m: m, p: p}
 		select {
 		case rq <- entry:

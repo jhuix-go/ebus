@@ -7,18 +7,18 @@
 package client
 
 import (
-	`runtime/debug`
-	`sync/atomic`
-	`time`
+	"runtime/debug"
+	"sync/atomic"
+	"time"
 
-	`go.nanomsg.org/mangos/v3`
-	mproto `go.nanomsg.org/mangos/v3/protocol`
+	"go.nanomsg.org/mangos/v3"
+	mproto "go.nanomsg.org/mangos/v3/protocol"
 
-	`github.com/jhuix-go/ebus/pkg/discovery`
-	`github.com/jhuix-go/ebus/pkg/discovery/watch`
-	`github.com/jhuix-go/ebus/pkg/log`
-	`github.com/jhuix-go/ebus/pkg/queue`
-	`github.com/jhuix-go/ebus/protocol`
+	"github.com/jhuix-go/ebus/pkg/discovery"
+	"github.com/jhuix-go/ebus/pkg/discovery/watch"
+	"github.com/jhuix-go/ebus/pkg/log"
+	"github.com/jhuix-go/ebus/pkg/queue"
+	"github.com/jhuix-go/ebus/protocol"
 )
 
 type Options struct {
@@ -167,7 +167,7 @@ func (c *XClient) PickSendEvent(hash string, eventId uint32, data []byte) error 
 		return err
 	}
 
-	src := p.ID()
+	src := p.RemoteID()
 	return c.SendEvent(src, eventId, 0, data)
 }
 
@@ -177,6 +177,6 @@ func (c *XClient) PickSend(hash string, dest uint32, data []byte) error {
 		return err
 	}
 
-	src := p.ID()
+	src := p.RemoteID()
 	return c.Send(src, dest, data)
 }

@@ -7,19 +7,18 @@
 package client
 
 import (
-	`errors`
-	`fmt`
-	`net`
-	`runtime/debug`
-	`sync`
-	`time`
+	"errors"
+	"fmt"
+	"runtime/debug"
+	"sync"
+	"time"
 
-	`go.nanomsg.org/mangos/v3`
-	mproto `go.nanomsg.org/mangos/v3/protocol`
-	`go.nanomsg.org/mangos/v3/transport/all`
+	"go.nanomsg.org/mangos/v3"
+	mproto "go.nanomsg.org/mangos/v3/protocol"
+	"go.nanomsg.org/mangos/v3/transport/all"
 
-	`github.com/jhuix-go/ebus/pkg/log`
-	`github.com/jhuix-go/ebus/protocol`
+	"github.com/jhuix-go/ebus/pkg/log"
+	"github.com/jhuix-go/ebus/protocol"
 )
 
 type PipeHandler interface {
@@ -158,20 +157,20 @@ func (c *Client) SetWriteTimeout(v time.Duration) {
 	}
 }
 
-func (c *Client) Link(p mangos.Pipe) string {
-	addr := "->" + c.cfg.Address
-	if p != nil {
-		var lAddr, rAddr string
-		if v, err := p.GetOption(mangos.OptionLocalAddr); err == nil {
-			lAddr = v.(net.Addr).String()
-		}
-		if v, err := p.GetOption(mangos.OptionRemoteAddr); err == nil {
-			rAddr = v.(net.Addr).String()
-		}
-		addr = lAddr + "<->" + rAddr
-	}
-	return addr
-}
+// func (c *Client) Link(p mangos.Pipe) string {
+// 	addr := "->" + c.cfg.Address
+// 	if p != nil {
+// 		var lAddr, rAddr string
+// 		if v, err := p.GetOption(mangos.OptionLocalAddr); err == nil {
+// 			lAddr = v.(net.Addr).String()
+// 		}
+// 		if v, err := p.GetOption(mangos.OptionRemoteAddr); err == nil {
+// 			rAddr = v.(net.Addr).String()
+// 		}
+// 		addr = lAddr + "<->" + rAddr
+// 	}
+// 	return addr
+// }
 
 func (c *Client) String() string {
 	info := c.socket.Info()
@@ -184,20 +183,23 @@ func (c *Client) pipeEventHook(pe mangos.PipeEvent, pp protocol.Pipe) interface{
 	switch pe {
 	case mangos.PipeEventAttaching:
 		c.onConnection(pp)
-		log.Infof("<event> %s connection attaching: %s", protocol.EventName(eventId), protocol.Link(pp))
+		log.Infof("<event> %s connection attaching: %s(%d)<->%s(%d)",
+			protocol.EventName(eventId), pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
 		if !c.establish {
 			c.establish = true
 			c.wg.Add(1)
 			go c.establishConnection()
 		}
 	case mangos.PipeEventAttached:
-		c.registerEvent(pp)
-		log.Infof("<event> %s connection attached: %s", protocol.EventName(eventId), protocol.Link(pp))
+		log.Infof("<event> %s connection attached: %s(%d)<->%s(%d)",
+			protocol.EventName(eventId), pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
 	case mangos.PipeEventDetached:
-		log.Infof("<event> %s connection closed: %s", protocol.EventName(eventId), protocol.Link(pp))
+		log.Infof("<event> %s connection closed: %s(%d)<->%s(%d)",
+			protocol.EventName(eventId), pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
 		c.onClose(pp)
 	case protocol.PipeEventRegistered:
-		log.Infof("<event> %s connection register remote: %s", protocol.EventName(eventId), protocol.Link(pp))
+		log.Infof("<event> %s connection registed by remote: %s(%d)<->%s(%d)",
+			protocol.EventName(eventId), pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
 	case protocol.PipeEventHeartBeat:
 		return c.pipeHeartHook(pp)
 	default:
@@ -297,14 +299,14 @@ func (c *Client) connect(ev uint32, addr string) (any, error) {
 // 	c.times[ev] = t
 // }
 
-func (c *Client) registerEvent(p protocol.Pipe) {
-	m := mangos.NewMessage(0)
-	m.Header = protocol.PutHeader(m.Header, p.ID(), protocol.SignallingControl|protocol.SignallingRegisterEvent, p.Event())
-	if err := c.socket.SendMsg(m); err != nil {
-		m.Free()
-		log.Errorf("<event> %s, register event error: %s", c, err)
-	}
-}
+// func (c *Client) registerEvent(p protocol.Pipe) {
+// 	m := mangos.NewMessage(0)
+// 	m.Header = protocol.PutHeader(m.Header, p.RemoteID(), protocol.SignallingControl|protocol.SignallingRegisterEvent, p.Event())
+// 	if err := c.socket.SendMsg(m); err != nil {
+// 		m.Free()
+// 		log.Errorf("<event> %s, register event error: %s", c, err)
+// 	}
+// }
 
 func (c *Client) onConnection(p protocol.Pipe) {
 	if c.handler != nil {

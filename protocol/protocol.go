@@ -7,11 +7,9 @@
 package protocol
 
 import (
-	`fmt`
-
-	`go.nanomsg.org/mangos/v3`
-	`go.nanomsg.org/mangos/v3/errors`
-	`go.nanomsg.org/mangos/v3/protocol`
+	"go.nanomsg.org/mangos/v3"
+	"go.nanomsg.org/mangos/v3/errors"
+	"go.nanomsg.org/mangos/v3/protocol"
 )
 
 const (
@@ -76,9 +74,9 @@ type Pipe interface {
 	GetPrivate() interface{}
 }
 
-func Link(p Pipe) string {
-	return fmt.Sprintf("%s(%d)<->%s(%d)", p.LocalAddr(), p.ID(), p.RemoteAddr(), p.RemoteID())
-}
+// func Link(p Pipe) string {
+// 	return fmt.Sprintf("%s(%d)<->%s(%d)", p.LocalAddr(), p.ID(), p.RemoteAddr(), p.RemoteID())
+// }
 
 func LocalPipe(p mangos.Pipe) Pipe {
 	if pp, ok := p.(protocol.Pipe); ok {

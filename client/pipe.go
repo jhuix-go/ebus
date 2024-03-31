@@ -7,13 +7,13 @@
 package client
 
 import (
-	`net`
-	`time`
+	"net"
+	"time"
 
-	`go.nanomsg.org/mangos/v3`
-	mproto `go.nanomsg.org/mangos/v3/protocol`
+	"go.nanomsg.org/mangos/v3"
+	mproto "go.nanomsg.org/mangos/v3/protocol"
 
-	`github.com/jhuix-go/ebus/protocol`
+	"github.com/jhuix-go/ebus/protocol"
 )
 
 type Pipe struct {
@@ -132,24 +132,33 @@ outer:
 			continue
 		}
 
-		// m.Header = append(m.Header, m.Body[:headerLength]...)
-		m.Header = m.Body[:headerLength]
-		m.Body = m.Body[headerLength:]
-		if h.IsRegisterEvent() {
-			p.remote = h.Src()
-		}
 		s.Lock()
 		recvQ := s.recvQ
 		sizeQ := s.sizeQ
+		sendQ := p.sendQ
+		closeQ := p.closeQ
 		s.Unlock()
 
-		h.SetDest(pp.ID())
+		if h.IsRegisterEvent() { // register event and response register remote
+			p.remote = h.Dest()
+			m.Clone()
+			h.SetDest(p.event)
+			h.SetSrc(p.ID())
+			select {
+			case sendQ <- m:
+			default:
+				m.Free()
+			}
+		}
+
+		m.Header = m.Body[:headerLength]
+		m.Body = m.Body[headerLength:]
 		entry := recvQEntry{m, p}
 		select {
 		case recvQ <- entry:
 		case <-sizeQ:
 			m.Free()
-		case <-p.closeQ:
+		case <-closeQ:
 			m.Free()
 			break outer
 		}

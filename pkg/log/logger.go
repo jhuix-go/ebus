@@ -7,7 +7,7 @@
 package log
 
 import (
-	`time`
+	"time"
 )
 
 const (
@@ -75,19 +75,19 @@ type Logger interface {
 
 type EmptyLogger struct{}
 
-func (l *EmptyLogger) WithError(format string) Entry  { return DefaultEmptyEntry }
-func (l *EmptyLogger) WithWarn(format string) Entry   { return DefaultEmptyEntry }
-func (l *EmptyLogger) WithInfo(format string) Entry   { return DefaultEmptyEntry }
-func (l *EmptyLogger) WithDebug(format string) Entry  { return DefaultEmptyEntry }
-func (l *EmptyLogger) Errorf(format string, v ...any) {}
-func (l *EmptyLogger) Warnf(format string, v ...any)  {}
-func (l *EmptyLogger) Infof(format string, v ...any)  {}
-func (l *EmptyLogger) Debugf(format string, v ...any) {}
-func (l *EmptyLogger) SetLevel(level int)             {}
+func (l *EmptyLogger) WithError(string) Entry { return DefaultEmptyEntry }
+func (l *EmptyLogger) WithWarn(string) Entry  { return DefaultEmptyEntry }
+func (l *EmptyLogger) WithInfo(string) Entry  { return DefaultEmptyEntry }
+func (l *EmptyLogger) WithDebug(string) Entry { return DefaultEmptyEntry }
+func (l *EmptyLogger) Errorf(string, ...any)  {}
+func (l *EmptyLogger) Warnf(string, ...any)   {}
+func (l *EmptyLogger) Infof(string, ...any)   {}
+func (l *EmptyLogger) Debugf(string, ...any)  {}
+func (l *EmptyLogger) SetLevel(int)           {}
 
 var (
 	defaultEmptyLogger Logger = &EmptyLogger{}
-	defaultLogger      Logger = defaultEmptyLogger
+	defaultLogger             = defaultEmptyLogger
 )
 
 func SetLogger(nl Logger) {

@@ -7,18 +7,18 @@
 package log
 
 import (
-	`path`
-	`runtime`
-	`strconv`
-	`sync`
-	`sync/atomic`
-	`time`
+	"path"
+	"runtime"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
 
-	`github.com/gookit/slog`
-	`github.com/gookit/slog/handler`
-	`github.com/gookit/slog/rotatefile`
+	"github.com/gookit/slog"
+	"github.com/gookit/slog/handler"
+	"github.com/gookit/slog/rotatefile"
 
-	`github.com/jhuix-go/ebus/pkg/queue`
+	"github.com/jhuix-go/ebus/pkg/queue"
 )
 
 func getCaller(callerSkip int) (string, int) {
@@ -229,7 +229,7 @@ func (l *logger) WithError(format string) Entry {
 		return DefaultEmptyEntry
 	}
 
-	return l.newRecord().withCaller(callerSkip).WithLevel(ErrorLevel).WithTime(time.Now()).WithFormat(format)
+	return l.newRecord().withCaller(callerSkip).WithTime(time.Now()).WithLevel(ErrorLevel).WithFormat(format)
 }
 
 func (l *logger) WithWarn(format string) Entry {
@@ -237,7 +237,7 @@ func (l *logger) WithWarn(format string) Entry {
 		return DefaultEmptyEntry
 	}
 
-	return l.newRecord().withCaller(callerSkip).WithLevel(WarnLevel).WithTime(time.Now()).WithFormat(format)
+	return l.newRecord().withCaller(callerSkip).WithTime(time.Now()).WithLevel(WarnLevel).WithFormat(format)
 }
 
 func (l *logger) WithInfo(format string) Entry {
@@ -245,7 +245,7 @@ func (l *logger) WithInfo(format string) Entry {
 		return DefaultEmptyEntry
 	}
 
-	return l.newRecord().withCaller(callerSkip).WithLevel(InfoLevel).WithTime(time.Now()).WithFormat(format)
+	return l.newRecord().withCaller(callerSkip).WithTime(time.Now()).WithLevel(InfoLevel).WithFormat(format)
 }
 
 func (l *logger) WithDebug(format string) Entry {
@@ -253,7 +253,7 @@ func (l *logger) WithDebug(format string) Entry {
 		return DefaultEmptyEntry
 	}
 
-	return l.newRecord().withCaller(callerSkip).WithLevel(DebugLevel).WithTime(time.Now()).WithFormat(format)
+	return l.newRecord().withCaller(callerSkip).WithTime(time.Now()).WithLevel(DebugLevel).WithFormat(format)
 }
 
 func (l *logger) Errorf(format string, v ...any) {
@@ -262,7 +262,7 @@ func (l *logger) Errorf(format string, v ...any) {
 	}
 
 	e := l.newRecord()
-	e.withCaller(callerSkip).WithLevel(ErrorLevel).WithTime(time.Now()).WithFormat(format)
+	e.withCaller(callerSkip).WithTime(time.Now()).WithLevel(ErrorLevel).WithFormat(format)
 	for _, a := range v {
 		e.WithField(a, nil)
 	}
@@ -274,7 +274,7 @@ func (l *logger) Warnf(format string, v ...any) {
 	}
 
 	e := l.newRecord()
-	e.withCaller(callerSkip).WithLevel(WarnLevel).WithTime(time.Now()).WithFormat(format)
+	e.withCaller(callerSkip).WithTime(time.Now()).WithLevel(WarnLevel).WithFormat(format)
 	for _, a := range v {
 		e.WithField(a, nil)
 	}
@@ -286,7 +286,7 @@ func (l *logger) Infof(format string, v ...any) {
 	}
 
 	e := l.newRecord()
-	e.withCaller(callerSkip).WithLevel(InfoLevel).WithTime(time.Now()).WithFormat(format)
+	e.withCaller(callerSkip).WithTime(time.Now()).WithLevel(InfoLevel).WithFormat(format)
 	for _, a := range v {
 		e.WithField(a, nil)
 	}
@@ -298,7 +298,7 @@ func (l *logger) Debugf(format string, v ...any) {
 	}
 
 	e := l.newRecord()
-	e.withCaller(callerSkip).WithLevel(DebugLevel).WithTime(time.Now()).WithFormat(format)
+	e.withCaller(callerSkip).WithTime(time.Now()).WithLevel(DebugLevel).WithFormat(format)
 	for _, a := range v {
 		e.WithField(a, nil)
 	}
@@ -326,6 +326,10 @@ func newRotateFileHandler(logfile string, level slog.Level, rt rotatefile.Rotate
 	}
 
 	h := handler.SyncCloserWithMaxLevel(writer, logConfig.Level)
+	if tf, ok := h.Formatter().(*slog.TextFormatter); ok {
+		tf.TimeFormat = slog.DefaultTimeFormat
+		tf.SetTemplate("[{{datetime}}] [{{channel}}] [{{level}}] {{message}} {{data}} {{extra}}\n")
+	}
 	return h, nil
 }
 

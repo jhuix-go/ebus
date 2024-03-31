@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	`go.nanomsg.org/mangos/v3`
+	"go.nanomsg.org/mangos/v3"
 	mproto "go.nanomsg.org/mangos/v3/protocol"
 
-	`github.com/jhuix-go/ebus/protocol`
+	"github.com/jhuix-go/ebus/protocol"
 )
 
 // Protocol identity information.
@@ -30,6 +30,7 @@ type Protocol struct {
 	sizeQ       chan struct{}
 	recvQ       chan recvQEntry
 	pipes       map[uint32]*Pipe
+	remotePipes map[uint32]*Pipe
 	events      map[mangos.Dialer]uint32
 	recvExpire  time.Duration
 	sendExpire  time.Duration
@@ -82,7 +83,7 @@ func (s *Protocol) SendMsg(m *mproto.Message) error {
 		return mproto.ErrNoPeers
 	}
 
-	p, ok := s.pipes[id]
+	p, ok := s.remotePipes[id]
 	if !ok {
 		s.Unlock()
 		return mproto.ErrNoPeers
@@ -146,7 +147,6 @@ func (s *Protocol) RecvMsg() (*mproto.Message, error) {
 		closeQ := s.closeQ
 		recvQ := s.recvQ
 		sizeQ := s.sizeQ
-		hook := s.hook
 		s.Unlock()
 		select {
 		case <-closeQ:
@@ -162,7 +162,7 @@ func (s *Protocol) RecvMsg() (*mproto.Message, error) {
 			}
 
 			if h.IsRegisterEvent() {
-				hook(protocol.PipeEventRegistered, p)
+				_ = s.addRemotePipe(p.remote, p)
 				m.Free()
 				continue
 			}
@@ -292,6 +292,23 @@ func (s *Protocol) GetOption(option string) (interface{}, error) {
 	return nil, mproto.ErrBadOption
 }
 
+func (s *Protocol) addRemotePipe(src uint32, p *Pipe) error {
+	s.Lock()
+	if s.closed {
+		s.Unlock()
+		return mproto.ErrClosed
+	}
+
+	s.remotePipes[src] = p
+	ph := s.hook
+	s.Unlock()
+
+	if ph != nil {
+		ph(protocol.PipeEventRegistered, p)
+	}
+	return nil
+}
+
 func (s *Protocol) AddPipe(pp mproto.Pipe) error {
 	s.Lock()
 	defer s.Unlock()
@@ -325,6 +342,7 @@ func (s *Protocol) RemovePipe(pp mproto.Pipe) {
 	close(p.closeQ)
 	s.Lock()
 	delete(s.pipes, p.p.ID())
+	delete(s.remotePipes, p.RemoteID())
 	ph := s.hook
 	var dialer mangos.Dialer
 	if mp, ok := pp.(mangos.Pipe); ok {
@@ -384,14 +402,14 @@ func (s *Protocol) WaitAllPipe() {
 
 func (s *Protocol) Pipe(id uint32) protocol.Pipe {
 	s.Lock()
-	p, _ := s.pipes[id]
+	p, _ := s.remotePipes[id]
 	s.Unlock()
 	return p
 }
 
 func (s *Protocol) RangePipes(f func(uint32, protocol.Pipe) bool) {
 	s.Lock()
-	for id, p := range s.pipes {
+	for id, p := range s.remotePipes {
 		if !f(id, p) {
 			break
 		}
@@ -442,13 +460,14 @@ func (s *Protocol) pipeEventHook(pe mangos.PipeEvent, mp mangos.Pipe) {
 // NewProtocol returns a new protocol implementation.
 func NewProtocol() *Protocol {
 	s := &Protocol{
-		pipes:    make(map[uint32]*Pipe),
-		events:   make(map[mangos.Dialer]uint32),
-		closeQ:   make(chan struct{}),
-		sizeQ:    make(chan struct{}),
-		recvQ:    make(chan recvQEntry, defaultQLen),
-		recvQLen: defaultQLen,
-		sendQLen: defaultQLen,
+		pipes:       make(map[uint32]*Pipe),
+		remotePipes: make(map[uint32]*Pipe),
+		events:      make(map[mangos.Dialer]uint32),
+		closeQ:      make(chan struct{}),
+		sizeQ:       make(chan struct{}),
+		recvQ:       make(chan recvQEntry, defaultQLen),
+		recvQLen:    defaultQLen,
+		sendQLen:    defaultQLen,
 	}
 	return s
 }

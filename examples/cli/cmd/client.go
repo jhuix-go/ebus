@@ -7,12 +7,12 @@
 package cmd
 
 import (
-	`github.com/desertbit/grumble`
-	mproto `go.nanomsg.org/mangos/v3/protocol`
+	"github.com/desertbit/grumble"
+	mproto "go.nanomsg.org/mangos/v3/protocol"
 
-	ebus `github.com/jhuix-go/ebus/client`
-	`github.com/jhuix-go/ebus/pkg/log`
-	`github.com/jhuix-go/ebus/protocol`
+	ebus "github.com/jhuix-go/ebus/client"
+	"github.com/jhuix-go/ebus/pkg/log"
+	"github.com/jhuix-go/ebus/protocol"
 )
 
 type ClientHandler struct{}
@@ -82,7 +82,7 @@ var cltQueryCmd = &grumble.Command{
 			printHeadline("id              event      remote           address")
 			ebClt.RangePipes(func(id uint32, p protocol.Pipe) bool {
 				printf("%10d      %s       %10d       %s<->%s",
-					id, protocol.EventName(p.Event()), p.RemoteID(), p.LocalAddr(), p.RemoteAddr())
+					p.ID(), protocol.EventName(p.Event()), p.RemoteID(), p.LocalAddr(), p.RemoteAddr())
 				return true
 			})
 			return nil
