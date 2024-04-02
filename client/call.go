@@ -10,10 +10,10 @@ import (
 	`context`
 	`errors`
 
-	`github.com/prometheus/common/log`
 	`go.nanomsg.org/mangos/v3`
 
 	`github.com/jhuix-go/ebus/client/message`
+	`github.com/jhuix-go/ebus/pkg/log`
 	`github.com/jhuix-go/ebus/protocol`
 )
 
@@ -36,11 +36,11 @@ func (c *Call) done() {
 	case c.Done <- c:
 		// ok
 	default:
-		log.Debug("discarding Call reply due to insufficient Done chan capacity")
+		log.Debugf("discarding Call reply due to insufficient Done chan capacity")
 	}
 }
 
-func (c *XClient) send(ctx context.Context, sendEvent bool, src, dest uint32, eventHash uint64, call *Call) {
+func (c *XClient) send(ctx context.Context, src, dest uint32, eventHash uint64, call *Call) {
 	// meta := message.DecodeMetaContext(ctx)
 	// if meta == nil {
 	//	return
@@ -85,13 +85,12 @@ func (c *XClient) send(ctx context.Context, sendEvent bool, src, dest uint32, ev
 	totalL := message.HeaderLength + 4 + (4 + message.SizeMeta(call.ReqMetadata)) + (4 + len(data))
 	m := mangos.NewMessage(totalL)
 	signalling := protocol.SignallingAssign
-	if sendEvent {
+	if protocol.IsEventID(dest) {
 		signalling = protocol.SignallingEvent
 		if eventHash != 0 {
 			signalling = protocol.SignallingEventHash
 		}
 	}
-
 	if signalling == protocol.SignallingEventHash {
 		m.Header = protocol.PutHashHeader(m.Header, src, dest, eventHash)
 	} else {
@@ -118,14 +117,10 @@ func (c *XClient) send(ctx context.Context, sendEvent bool, src, dest uint32, ev
 	// 	}
 	// }
 	req.Payload = data
-	if c.opt.Trace {
-		log.Debugf("c.send for %s.%s, args: %+v in case of client call", call.ServicePath, call.ServiceMethod, call.Args)
-	}
-
 	body := req.Encode(m.Body)
 	m.Body = m.Body[:len(body)]
 	err = c.socket.SendMsg(m)
-	if c.opt.Trace {
+	if c.opt.TraceMessage {
 		log.Debugf("c.sent for %s.%s, args: %+v in case of client call", call.ServicePath, call.ServiceMethod, call.Args)
 	}
 	if err != nil {
@@ -174,7 +169,7 @@ func (c *XClient) receive(m *mangos.Message) (*mangos.Message, error) {
 		delete(c.pending, id)
 		c.Unlock()
 	}
-	if c.opt.Trace {
+	if c.opt.TraceMessage {
 		log.Debugf("client received %v", h)
 	}
 	if call == nil {
@@ -231,7 +226,7 @@ func (c *XClient) receive(m *mangos.Message) (*mangos.Message, error) {
 // the invocation. The done channel will signal when the call is complete by returning
 // the same Call object. If done is nil, Go will allocate a new channel.
 // If non-nil, done must be buffered or Go will deliberately crash.
-func (c *XClient) Go(ctx context.Context, sendEvent bool, src, dest uint32, eventHash uint64,
+func (c *XClient) Go(ctx context.Context, src, dest uint32, eventHash uint64,
 		servicePath, serviceMethod string, args interface{}, reply interface{}, done chan *Call) *Call {
 	if done == nil {
 		done = make(chan *Call, 10) // buffered.
@@ -258,22 +253,22 @@ func (c *XClient) Go(ctx context.Context, sendEvent bool, src, dest uint32, even
 	call.Reply = reply
 	call.Done = done
 
-	if c.opt.Trace {
+	if c.opt.TraceMessage {
 		log.Debugf("c.Go send request for %s.%s, args: %+v in case of client call", servicePath, serviceMethod, args)
 	}
 
-	go c.send(ctx, sendEvent, src, dest, eventHash, call)
+	go c.send(ctx, src, dest, eventHash, call)
 
 	return call
 }
 
 // Call invokes the named function, waits for it to complete, and returns its error status.
-func (c *XClient) Call(ctx context.Context, sendEvent bool, src, dest uint32, eventHash uint64,
+func (c *XClient) Call(ctx context.Context, src, dest uint32, eventHash uint64,
 		servicePath, serviceMethod string, args interface{}, reply interface{}) error {
-	if c.opt.Trace {
+	if c.opt.TraceMessage {
 		log.Debugf("c.call for %s.%s, args: %+v in case of client call", servicePath, serviceMethod, args)
 		defer func() {
-			log.Debugf("c.call done for %s.%s, args: %+v in case of client call", servicePath, serviceMethod, args)
+			log.Debugf("c.call done for %s.%s, reply: %+v in case of client call", servicePath, serviceMethod, reply)
 		}()
 	}
 
@@ -281,7 +276,7 @@ func (c *XClient) Call(ctx context.Context, sendEvent bool, src, dest uint32, ev
 	if c.opt.IdleTimeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, c.opt.IdleTimeout)
 	}
-	call := c.Go(ctx, sendEvent, src, dest, eventHash, servicePath, serviceMethod, args, reply, make(chan *Call, 1))
+	call := c.Go(ctx, src, dest, eventHash, servicePath, serviceMethod, args, reply, make(chan *Call, 1))
 
 	var err error
 	select {

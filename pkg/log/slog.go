@@ -10,6 +10,7 @@ import (
 	"path"
 	"runtime"
 	"strconv"
+	`strings`
 	"sync"
 	"sync/atomic"
 	"time"
@@ -413,7 +414,7 @@ func InitLogger(appName string, o *Options) {
 		op(&opt)
 	}
 	slog.DefaultTimeFormat = "2006/01/02 15:04:05.000000"
-	slog.DefaultChannelName = appName
+	slog.DefaultChannelName = strings.ToUpper(appName)
 	slog.Std().ChannelName = slog.DefaultChannelName
 	slog.Std().CallerSkip = 8
 	slog.Std().CallerFlag = slog.CallerFlagFpLine

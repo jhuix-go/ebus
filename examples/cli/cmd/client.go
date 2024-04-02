@@ -28,11 +28,11 @@ func (h *ClientHandler) OnPipeDataArrived(p protocol.Pipe, msg interface{}) erro
 func (h *ClientHandler) OnPipeClosed(p protocol.Pipe) {}
 func (h *ClientHandler) OnPipeTimer(p protocol.Pipe)  {}
 
-var clientCmd = &grumble.Command{
-	Name:    "client",
-	Help:    "admin a event client",
-	Aliases: []string{"clt"},
-}
+// var clientCmd = &grumble.Command{
+// 	Name:    "client",
+// 	Help:    "admin a event client",
+// 	Aliases: []string{"clt"},
+// }
 
 var cltRunCmd = &grumble.Command{
 	Name: "run",
@@ -81,12 +81,13 @@ var cltQueryCmd = &grumble.Command{
 
 		id := c.Args.Uint("id")
 		if id == 0 {
-			printHeadline("id              event      remote           address")
+			printHeadline("id                         event           address")
 			ebClt.RangePipes(func(id uint32, p protocol.Pipe) bool {
-				printf("%10d      %s       %10d       %s<->%s",
-					p.ID(), protocol.EventName(p.Event()), p.RemoteID(), p.LocalAddr(), p.RemoteAddr())
+				printf("%s:%-10d      %s       %s<->%s",
+					protocol.InetNtoA(p.RemoteID()), p.ID(), protocol.EventName(p.Event()), p.LocalAddr(), p.RemoteAddr())
 				return true
 			})
+
 			return nil
 		}
 
@@ -95,9 +96,9 @@ var cltQueryCmd = &grumble.Command{
 			return ErrPipeNotExist
 		}
 
-		printHeadline("id              event      remote           address")
-		printf("%10d      %s       %10d       %s<->%s",
-			id, protocol.EventName(p.Event()), p.RemoteID(), p.LocalAddr(), p.RemoteAddr())
+		printHeadline("id                         event           address")
+		printf("%s:%-10d      %s       %s<->%s",
+			protocol.InetNtoA(p.RemoteID()), p.ID(), protocol.EventName(p.Event()), p.LocalAddr(), p.RemoteAddr())
 		return nil
 	},
 }
@@ -148,9 +149,8 @@ var cltSendCmd = &grumble.Command{
 		fs.Uint64("s", "hash", 0, "use hash for select event")
 	},
 	Args: func(as *grumble.Args) {
-		as.Uint("src", "src of event pipe", grumble.Default(uint(0)))
+		as.String("src", "src of event pipe", grumble.Default(""))
 		as.String("dest", "dest of event pipe", grumble.Default(""))
-		// as.Uint64("hash", "hash of event pipe", grumble.Default(uint64(0)))
 		as.String("data", "message data for send", grumble.Default(""))
 	},
 	Run: func(c *grumble.Context) error {
@@ -159,8 +159,8 @@ var cltSendCmd = &grumble.Command{
 			return ErrServerNotExist
 		}
 
-		src := uint32(c.Args.Uint("src"))
-		if src == 0 {
+		srcArg := c.Args.String("src")
+		if len(srcArg) == 0 {
 			return ErrParamsIsEmpty
 		}
 
@@ -174,19 +174,32 @@ var cltSendCmd = &grumble.Command{
 			return ErrParamsIsEmpty
 		}
 
-		var dest uint32
+		var (
+			src  uint32
+			dest uint32
+		)
+		src = protocol.InetAtoN(srcArg)
+		if src == 0 {
+			v, _ := strconv.Atoi(srcArg)
+			src = uint32(v)
+		}
+
 		if c.Flags.Bool("event") {
 			dest = protocol.EventNameN(destArg)
 		} else {
-			v, _ := strconv.Atoi(destArg)
-			dest = uint32(v)
+			dest = protocol.InetAtoN(destArg)
+			if dest == 0 {
+				v, _ := strconv.Atoi(destArg)
+				dest = uint32(v)
+			}
 		}
+
 		hash := c.Flags.Uint64("hash")
 		if err := ebClt.SendData(src, dest, hash, []byte(data)); err != nil {
 			return err
 		}
 
-		log.Infof("send event message succeed: %d->%s %s", src, dest, data)
+		log.Infof("send event message succeed: %s(%d)->%s(%d) %s", srcArg, src, destArg, dest, data)
 		return nil
 	},
 }
@@ -224,9 +237,9 @@ var cltCloseCmd = &grumble.Command{
 }
 
 func init() {
-	clientCmd.AddCommand(cltRunCmd)
-	clientCmd.AddCommand(cltQueryCmd)
-	clientCmd.AddCommand(cltSendCmd)
-	clientCmd.AddCommand(cltCloseCmd)
-	App.AddCommand(clientCmd)
+	App.AddCommand(cltRunCmd)
+	App.AddCommand(cltQueryCmd)
+	App.AddCommand(cltSendCmd)
+	App.AddCommand(cltCloseCmd)
+	// App.AddCommand(clientCmd)
 }

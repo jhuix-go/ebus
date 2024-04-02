@@ -111,17 +111,17 @@ func (s *Server) SetReadTimeout(v time.Duration) {
 func (s *Server) pipeEventHook(pe mangos.PipeEvent, pp protocol.Pipe) interface{} {
 	switch pe {
 	case mangos.PipeEventAttaching:
-		log.Infof("<ebus> connection attaching: %s(%d)<->%s(%d)",
-			pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
+		log.Infof("connection attaching: %s(%s)<->%s(%d)",
+			pp.LocalAddr(), protocol.InetNtoA(pp.ID()), pp.RemoteAddr(), pp.RemoteID())
 	case mangos.PipeEventAttached:
-		log.Infof("<ebus> connection attached: %s(%d)<->%s(%d)",
-			pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
+		log.Infof("connection attached: %s(%s)<->%s(%d)",
+			pp.LocalAddr(), protocol.InetNtoA(pp.ID()), pp.RemoteAddr(), pp.RemoteID())
 	case mangos.PipeEventDetached:
-		log.Infof("<ebus> connection closed: %s(%d)<->%s(%d)",
-			pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
+		log.Infof("connection closed: %s(%s)<->%s(%d)",
+			pp.LocalAddr(), protocol.InetNtoA(pp.ID()), pp.RemoteAddr(), pp.RemoteID())
 	case protocol.PipeEventRegistered:
-		log.Infof("<ebus> connection registered as %s event service: %s(%d)<->%s(%d)",
-			protocol.EventName(pp.Event()), pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
+		log.Infof("connection registered as %s event service: %s(%s)<->%s(%d)",
+			protocol.EventName(pp.Event()), pp.LocalAddr(), protocol.InetNtoA(pp.ID()), pp.RemoteAddr(), pp.RemoteID())
 	default:
 	}
 	return nil
@@ -137,11 +137,11 @@ func (s *Server) Listen(addr string) error {
 
 	s.socket.SetPipeEventHook(s.pipeEventHook)
 	if err := s.socket.Listen(addr); err != nil {
-		log.Errorf("<ebus> listen %s error: %v", s.cfg.Address, err)
+		log.Errorf("listen %s error: %v", s.cfg.Address, err)
 		return err
 	}
 
-	log.Infof("<ebus> listen %s succeed", addr)
+	log.Infof("listen %s succeed", addr)
 	return nil
 }
 
@@ -155,7 +155,7 @@ func (s *Server) SendEvent(src, event uint32, hash uint64, data []byte) error {
 	m.Body = append(m.Body, data...)
 	if err := s.socket.SendMsg(m); err != nil {
 		m.Free()
-		log.Errorf("<ebus> %d<->%s, send error: %s", src, protocol.EventName(event), err)
+		log.Errorf("%d<->%s, send error: %s", src, protocol.EventName(event), err)
 		return err
 	}
 
@@ -168,7 +168,7 @@ func (s *Server) Send(src, dest uint32, data []byte) error {
 	m.Body = append(m.Body, data...)
 	if err := s.socket.SendMsg(m); err != nil {
 		m.Free()
-		log.Errorf("<ebus> %d<->%d, send error: %s", src, dest, err)
+		log.Errorf("%d<->%d, send error: %s", src, dest, err)
 		return err
 	}
 
@@ -180,7 +180,7 @@ func (s *Server) Broadcast(data []byte) error {
 	m.Header = protocol.PutHeader(m.Header, protocol.PipeEbus, protocol.SignallingAssign, 0)
 	if err := s.socket.SendMsg(m); err != nil {
 		m.Free()
-		log.Errorf("<ebus> broadcast error: %s", err)
+		log.Errorf("broadcast error: %s", err)
 		return err
 	}
 
@@ -205,9 +205,9 @@ func (s *Server) Serve() {
 	s.wg.Add(1)
 	defer func() {
 		if err := recover(); err != nil {
-			log.Errorf("<ebus> recv panic error: %v, stack:\n %s", err, debug.Stack())
+			log.Errorf("recv panic error: %v, stack:\n %s", err, debug.Stack())
 		} else {
-			log.Infof("<ebus> event bus closed")
+			log.Infof("event bus closed")
 		}
 		_ = s.Close()
 		s.wg.Done()
@@ -216,7 +216,7 @@ func (s *Server) Serve() {
 	for {
 		m, err := s.socket.RecvMsg()
 		if err != nil {
-			log.Errorf("<ebus> recv message error: %v", err)
+			log.Errorf("recv message error: %v", err)
 			if errors.Is(err, mangos.ErrClosed) {
 				break
 			}
@@ -225,7 +225,7 @@ func (s *Server) Serve() {
 		}
 
 		if s.cfg.TraceMessage {
-			log.Debugf("<ebus> recv message: event=%s header=%s, data_size=%d",
+			log.Debugf("recv message: event=%s header=%s data_size=%d",
 				protocol.EventName(protocol.PipeEvent(m.Pipe)), protocol.StringHeader(m.Header), len(m.Body))
 		}
 		h := protocol.Header{Data: m.Header}
@@ -237,7 +237,8 @@ func (s *Server) Serve() {
 		// router send
 		if err = s.socket.SendMsg(m); err != nil {
 			m.Free()
-			log.Errorf("<ebus> send message error: %v", err)
+			log.Errorf("send message: event=%s header=%s error=%v",
+				protocol.EventName(protocol.PipeEvent(m.Pipe)), protocol.StringHeader(m.Header), err)
 		}
 	}
 }
@@ -250,5 +251,5 @@ func (s *Server) Stop() {
 	_ = s.Close()
 	s.proto.WaitAllPipe()
 	s.wg.Wait()
-	log.Infof("<ebus> event bus stopped")
+	log.Infof("event bus stopped")
 }

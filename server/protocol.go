@@ -13,9 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jhuix-go/ebus/pkg/log"
 	"go.nanomsg.org/mangos/v3"
 	mproto "go.nanomsg.org/mangos/v3/protocol"
+
+	"github.com/jhuix-go/ebus/pkg/log"
 
 	"github.com/jhuix-go/ebus/pkg/queue"
 	"github.com/jhuix-go/ebus/protocol"
@@ -303,7 +304,7 @@ func (s *Protocol) registerEvent(p *Pipe) {
 	m.Header = protocol.PutHeader(m.Header, protocol.PipeEbus,
 		protocol.SignallingControl|protocol.SignallingRegisterEvent, p.ID())
 	if err := p.SendMsg(m); err != nil {
-		log.Errorf("<ebus> %s, register event error: %s", s.String(), err)
+		log.Errorf("%s, register event error: %s", s.String(), err)
 	}
 }
 

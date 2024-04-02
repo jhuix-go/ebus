@@ -132,12 +132,12 @@ func (h *Header) String() string {
 		var dest [4]byte
 		copy(dest[:], h.Data[8:12])
 		dest[0] &= 0x7F
-		return fmt.Sprintf("{\"flag\":\"%s\",\"signalling\":0x%x,\"src\":%d,\"dest\":\"%s\"}",
-			flag, h.Signalling(), h.Src(), dest)
+		return fmt.Sprintf("{\"flag\":\"%s\",\"signalling\":0x%x,\"src\":%s,\"dest\":\"%s\"}",
+			flag, h.Signalling(), InetNtoA(h.Src()), dest)
 	}
 
-	return fmt.Sprintf("{\"flag\":\"%s\",\"signalling\":0x%x,\"src\":%d,\"dest\":%d}",
-		flag, h.Signalling(), h.Src(), h.Dest())
+	return fmt.Sprintf("{\"flag\":\"%s\",\"signalling\":0x%x,\"src\":%s,\"dest\":%s}",
+		flag, h.Signalling(), InetNtoA(h.Src()), InetNtoA(h.Dest()))
 }
 
 func (h *Header) Flag() uint16 {

@@ -26,7 +26,7 @@ type Options struct {
 	CompressType  byte          `json:"compress_type,omitempty" yaml:"compress_type,omitempty" toml:"compress_type,omitempty"`
 	NotifyBlock   bool          `json:"notify_block,omitempty" yaml:"notify_block,omitempty" toml:"notify_block,omitempty"`
 	IdleTimeout   time.Duration `json:"idle_timeout,omitempty" yaml:"idle_timeout,omitempty" toml:"idle_timeout,omitempty"`
-	Trace         bool          `json:"trace,omitempty" yaml:"trace,omitempty" toml:"trace,omitempty"`
+	TraceMessage  bool          `json:"trace_message,omitempty" yaml:"trace_message,omitempty" toml:"trace_message,omitempty"`
 }
 
 type XClient struct {

@@ -41,7 +41,7 @@ func (s *Service) Initialize(cfg app.Config) error {
 	if s.cfg.Discovery != nil && len(s.cfg.Discovery.Endpoints) > 0 {
 		registrar, err := discovery.NewConsulRegistry(s.cfg.Discovery)
 		if err != nil {
-			log.Errorf("<ebus> new consul registrar failed: %v", err)
+			log.Errorf("new consul registrar failed: %v", err)
 			return err
 		}
 
@@ -60,7 +60,7 @@ func (s *Service) Initialize(cfg app.Config) error {
 
 func (s *Service) RunLoop() (err error) {
 	if s.svr == nil {
-		log.Errorf("<ebus> server run failed: server not created.")
+		log.Errorf("server run failed: server not created.")
 		return nil
 	}
 
@@ -73,9 +73,9 @@ func (s *Service) RunLoop() (err error) {
 		go func() {
 			defer s.wg.Done()
 
-			log.Infof("<ebus> register is starting...")
+			log.Infof("register is starting...")
 			_ = s.registrar.Register(s.svcInfo)
-			log.Infof("<ebus> register is exited.")
+			log.Infof("register is exited.")
 		}()
 	}
 
@@ -83,15 +83,15 @@ func (s *Service) RunLoop() (err error) {
 	go func() {
 		defer s.wg.Done()
 
-		log.Infof("<ebus> service is starting...")
+		log.Infof("service is starting...")
 		s.svr.Serve()
-		log.Infof("<ebus> service is exited.")
+		log.Infof("service is exited.")
 	}()
 	return
 }
 
 func (s *Service) Destroy() {
-	log.Infof("<ebus> service is stopping...")
+	log.Infof("service is stopping...")
 	if s.registrar != nil {
 		// _ = s.registrar.Unregister(s.svcInfo)
 		s.registrar.Close()
@@ -100,5 +100,5 @@ func (s *Service) Destroy() {
 		s.svr.Stop()
 	}
 	s.wg.Wait()
-	log.Infof("<ebus> service is stopped.")
+	log.Infof("service is stopped.")
 }
