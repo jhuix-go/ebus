@@ -183,11 +183,16 @@ func (l *logger) dispatch() {
 	done := l.done
 	defer l.wg.Done()
 
+	tick := time.NewTicker(5 * time.Second)
+
 	for {
 		select {
 		case e := <-q.DequeueC():
 			record(e)
+		case <-tick.C:
+			slog.Flush()
 		case <-done:
+			tick.Stop()
 			l.async.Store(false)
 			// processing the remaining logs
 			for {
