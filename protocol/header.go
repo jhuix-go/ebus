@@ -19,13 +19,13 @@ import (
 // )
 
 const (
-	DefaultFlag             = 0x6562 // eb
-	DefaultVersion          = 0x1
-	DefaultHeaderLength     = 12
-	DefaultHashHeaderLength = 20
-	MaxHeaderLength         = 60
-	MaskVersion             = 0xF0
-	MaskHeaderLength        = 0x0F
+	DefaultFlag              = 0x6562 // eb
+	DefaultVersion           = 0x1
+	DefaultHeaderLength      = 12
+	DefaultEventHeaderLength = 20
+	MaxHeaderLength          = 60
+	MaskVersion              = 0xF0
+	MaskHeaderLength         = 0x0F
 )
 
 // Signalling Format (UINT8):
@@ -63,8 +63,12 @@ type Header struct {
 	Data []byte
 }
 
-func PutHeader(header []byte, src uint32, signalling uint8, dest uint32) []byte {
+func PutHeader(header []byte, src uint32, signalling uint8, dest uint32, hash uint64) []byte {
 	headerLength := DefaultHeaderLength
+	isEvent := IsEventID(dest)
+	if isEvent {
+		headerLength = DefaultEventHeaderLength
+	}
 	if cap(header) < headerLength {
 		return header
 	}
@@ -74,27 +78,16 @@ func PutHeader(header []byte, src uint32, signalling uint8, dest uint32) []byte 
 	h.SetFlag(DefaultFlag)
 	h.SetVersion(DefaultVersion)
 	h.SetHeaderLength(uint8(headerLength))
+	h.SetSrc(src)
+	h.SetDest(dest)
+	if isEvent {
+		signalling |= SignallingEvent
+		if hash != 0 {
+			signalling |= SignallingHash
+		}
+		h.SetHash(hash)
+	}
 	h.SetSignalling(signalling)
-	h.SetSrc(src)
-	h.SetDest(dest)
-	return header
-}
-
-func PutHashHeader(header []byte, src uint32, dest uint32, hash uint64) []byte {
-	headerLength := DefaultHashHeaderLength
-	if cap(header) < headerLength {
-		return header
-	}
-
-	header = header[:headerLength]
-	h := Header{Data: header}
-	h.SetFlag(DefaultFlag)
-	h.SetVersion(DefaultVersion)
-	h.SetHeaderLength(uint8(headerLength))
-	h.SetSignalling(SignallingEventHash)
-	h.SetSrc(src)
-	h.SetDest(dest)
-	h.SetHash(hash)
 	return header
 }
 
@@ -104,9 +97,13 @@ func StringHeader(header []byte) string {
 }
 
 func EventName(event uint32) string {
-	var buf [4]byte
-	binary.BigEndian.PutUint32(buf[:4], event&0x7FFFFFFF)
-	return string(buf[:])
+	if (event & 0x80000000) != 0 {
+		var buf [4]byte
+		binary.BigEndian.PutUint32(buf[:4], event&0x7FFFFFFF)
+		return string(buf[:])
+	}
+
+	return InetNtoA(event)
 }
 
 func EventNameN(name string) uint32 {
@@ -123,7 +120,7 @@ func EventNameN(name string) uint32 {
 }
 
 func IsEventID(v uint32) bool {
-	return (v & 0x80000000) != 0
+	return (v&0x80000000) != 0 && v != PipeEbus
 }
 
 func (h *Header) String() string {
@@ -217,9 +214,15 @@ func (h *Header) SetDest(v uint32) {
 }
 
 func (h *Header) Hash() uint64 {
-	return binary.BigEndian.Uint64(h.Data[12:20])
+	if len(h.Data) >= DefaultEventHeaderLength {
+		return binary.BigEndian.Uint64(h.Data[12:20])
+	}
+
+	return 0
 }
 
 func (h *Header) SetHash(v uint64) {
-	binary.BigEndian.PutUint64(h.Data[12:20], v)
+	if len(h.Data) >= DefaultEventHeaderLength {
+		binary.BigEndian.PutUint64(h.Data[12:20], v)
+	}
 }

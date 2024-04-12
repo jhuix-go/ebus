@@ -157,21 +157,6 @@ func (c *Client) SetWriteTimeout(v time.Duration) {
 	}
 }
 
-// func (c *Client) Link(p mangos.Pipe) string {
-// 	addr := "->" + c.cfg.Address
-// 	if p != nil {
-// 		var lAddr, rAddr string
-// 		if v, err := p.GetOption(mangos.OptionLocalAddr); err == nil {
-// 			lAddr = v.(net.Addr).String()
-// 		}
-// 		if v, err := p.GetOption(mangos.OptionRemoteAddr); err == nil {
-// 			rAddr = v.(net.Addr).String()
-// 		}
-// 		addr = lAddr + "<->" + rAddr
-// 	}
-// 	return addr
-// }
-
 func (c *Client) String() string {
 	info := c.socket.Info()
 	return fmt.Sprintf("%d: {\"event_name\":\"%s\",\"self\":%d,\"self_name\":\"%s\",\"peer\":%d,\"peer_name\":\"%s\"}",
@@ -234,7 +219,7 @@ func (h *pipeEventHook) PipeEventHook(pe mangos.PipeEvent, pp protocol.Pipe) int
 func (c *Client) pipeHeartHook(p protocol.Pipe) *mproto.Message {
 	m := mangos.NewMessage(0)
 	id := p.ID()
-	m.Header = protocol.PutHeader(m.Header, id, protocol.SignallingControl|protocol.SignallingHeart, protocol.PipeEbus)
+	m.Header = protocol.PutHeader(m.Header, id, protocol.SignallingControl|protocol.SignallingHeart, protocol.PipeEbus, 0)
 	if c.handler != nil {
 		c.handler.OnPipeTimer(p)
 	}
@@ -357,28 +342,16 @@ func (c *Client) establishConnection() {
 
 func (c *Client) Stop() {
 	_ = c.Close()
-	c.proto.WaitAllPipe()
 	c.wg.Wait()
 	c.handler = nil
 	log.Infof("<event> event client stopped")
 }
 
 func (c *Client) SendMessage(src uint32, dest uint32, hash uint64, m *mangos.Message) error {
-	signalling := protocol.SignallingAssign
-	if protocol.IsEventID(dest) {
-		signalling = protocol.SignallingEvent
-		if hash != 0 {
-			signalling |= protocol.SignallingHash
-		}
-	}
-	if signalling == protocol.SignallingEventHash {
-		m.Header = protocol.PutHashHeader(m.Header, src, dest, hash)
-	} else {
-		m.Header = protocol.PutHeader(m.Header, src, signalling, dest)
-	}
+	m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingAssign, dest, hash)
 	if err := c.socket.SendMsg(m); err != nil {
 		m.Free()
-		log.Errorf("<event> %d<->%d, send error: %s", src, dest, err)
+		log.Errorf("<event> %s<->%s, send error: %s", protocol.EventName(src), protocol.EventName(dest), err)
 		return err
 	}
 
@@ -397,7 +370,7 @@ func (c *Client) Send(src, dest uint32, data []byte) error {
 
 func (c *Client) Broadcast(data []byte) error {
 	m := mangos.NewMessage(len(data))
-	m.Header = protocol.PutHeader(m.Header, 0, protocol.SignallingAssign, 0)
+	m.Header = protocol.PutHeader(m.Header, 0, protocol.SignallingAssign, 0, 0)
 	if err := c.socket.SendMsg(m); err != nil {
 		m.Free()
 		log.Errorf("<event> broadcast error: %s", err)

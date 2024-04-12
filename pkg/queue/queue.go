@@ -27,7 +27,7 @@ func NewQueueWithSize[T any](max int, inChanSize int) *Queue[T] {
 		max:  max,
 		done: make(chan struct{}),
 		in:   make(chan T, inChanSize),
-		out:  make(chan T),
+		out:  make(chan T, inChanSize),
 	}
 	go q.dispatch()
 	return q
@@ -48,7 +48,7 @@ func (q *Queue[T]) dispatch() {
 				return
 			}
 		}
-		e, ok := q.l.TryPopFront()
+		e, ok := q.l.Front()
 		if !ok {
 			continue
 		}
@@ -57,6 +57,7 @@ func (q *Queue[T]) dispatch() {
 			// the queue is full, only dequeue is allowed.
 			select {
 			case q.out <- e:
+				q.l.TryPopFront()
 			case <-q.done:
 				return
 			}
@@ -66,6 +67,7 @@ func (q *Queue[T]) dispatch() {
 			case v := <-q.in:
 				q.l.PushBack(v)
 			case q.out <- e:
+				q.l.TryPopFront()
 			case <-q.done:
 				return
 			}

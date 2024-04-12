@@ -145,30 +145,13 @@ func (s *Server) Listen(addr string) error {
 	return nil
 }
 
-func (s *Server) SendEvent(src, event uint32, hash uint64, data []byte) error {
+func (s *Server) Send(src, dest uint32, data []byte, hash uint64) error {
 	m := mangos.NewMessage(len(data))
-	if hash != 0 {
-		m.Header = protocol.PutHashHeader(m.Header, src, event, hash)
-	} else {
-		m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingEvent, event)
-	}
+	m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingAssign, dest, hash)
 	m.Body = append(m.Body, data...)
 	if err := s.socket.SendMsg(m); err != nil {
 		m.Free()
-		log.Errorf("%d<->%s, send error: %s", src, protocol.EventName(event), err)
-		return err
-	}
-
-	return nil
-}
-
-func (s *Server) Send(src, dest uint32, data []byte) error {
-	m := mangos.NewMessage(len(data))
-	m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingAssign, dest)
-	m.Body = append(m.Body, data...)
-	if err := s.socket.SendMsg(m); err != nil {
-		m.Free()
-		log.Errorf("%d<->%d, send error: %s", src, dest, err)
+		log.Errorf("%s<->%s, send error: %s", protocol.EventName(src), protocol.EventName(dest), err)
 		return err
 	}
 
@@ -177,7 +160,7 @@ func (s *Server) Send(src, dest uint32, data []byte) error {
 
 func (s *Server) Broadcast(data []byte) error {
 	m := mangos.NewMessage(len(data))
-	m.Header = protocol.PutHeader(m.Header, protocol.PipeEbus, protocol.SignallingAssign, 0)
+	m.Header = protocol.PutHeader(m.Header, protocol.PipeEbus, protocol.SignallingAssign, 0, 0)
 	if err := s.socket.SendMsg(m); err != nil {
 		m.Free()
 		log.Errorf("broadcast error: %s", err)
@@ -249,7 +232,6 @@ func (s *Server) Close() error {
 
 func (s *Server) Stop() {
 	_ = s.Close()
-	s.proto.WaitAllPipe()
 	s.wg.Wait()
 	log.Infof("event bus stopped")
 }

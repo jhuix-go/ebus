@@ -107,7 +107,6 @@ type PipeEventHook func(mangos.PipeEvent, Pipe) interface{}
 type Protocol interface {
 	protocol.Protocol
 	SetPipeEventHook(PipeEventHook)
-	WaitAllPipe()
 }
 
 type Socket interface {

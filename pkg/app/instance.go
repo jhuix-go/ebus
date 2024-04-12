@@ -194,11 +194,8 @@ func Start(serviceName string, cfgType string, instance ServiceInstance) {
 	cfgWater := &WaterConfigProxy{ServiceApp, nil, nil, nil}
 	cfg, err := NewConfig(cfgPath, cfgName, cfgType, cfgWater)
 	if err != nil {
-		println(err.Error())
-		if cfg == nil {
-			println("read " + ApplicationName + " config be failed, will exit.")
-			return
-		}
+		println("read " + ApplicationName + " config be failed will exit: " + err.Error())
+		return
 	}
 
 	options := initLogOption(cfg)
