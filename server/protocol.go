@@ -9,8 +9,10 @@ package server
 import (
 	"fmt"
 	"math/rand/v2"
+	`runtime/debug`
 	"slices"
 	"sync"
+	`sync/atomic`
 	"time"
 
 	"go.nanomsg.org/mangos/v3"
@@ -60,20 +62,36 @@ func hashPipe(hash uint64, m []*Pipe) *Pipe {
 	return m[n]
 }
 
+type aggregateQ struct {
+	sync.RWMutex
+	trace    bool
+	recvQLen int
+	running  atomic.Bool
+	closeQ   chan struct{}
+	sizeQ    chan struct{}
+	recvQ    chan recvQEntry
+}
+
+func newAggregateQ() *aggregateQ {
+	return &aggregateQ{
+		recvQLen: defaultQLen,
+		closeQ:   make(chan struct{}),
+		sizeQ:    make(chan struct{}),
+		recvQ:    make(chan recvQEntry, defaultQLen),
+	}
+}
+
 type Protocol struct {
-	closed bool
-	closeQ chan struct{}
-	sizeQ  chan struct{}
-	pipes  map[uint32]*Pipe
-	// eventPipes map[uint32]map[uint32]*Pipe
+	sync.RWMutex
+	closed     bool
+	pipes      map[uint32]*Pipe
 	eventPipes map[uint32][]*Pipe
 	recvQLen   int
 	sendQLen   int
 	recvExpire time.Duration
-	recvQ      chan recvQEntry
+	recvQS     []*aggregateQ
 	wg         sync.WaitGroup
 	hook       protocol.PipeEventHook
-	sync.Mutex
 }
 
 // Protocol identity information.
@@ -88,16 +106,19 @@ var (
 	nilQ <-chan time.Time
 )
 
-const defaultQLen = 128
+const (
+	defaultQLen          = 128
+	defaultExchangeLines = 4
+)
 
 func (s *Protocol) SendMsg(m *mproto.Message) error {
-	s.Lock()
-	defer s.Unlock()
+	s.RLock()
+	defer s.RUnlock()
 	if s.closed {
 		return mproto.ErrClosed
 	}
 
-	if len(m.Header) != protocol.DefaultHeaderLength && len(m.Header) != protocol.DefaultHashHeaderLength {
+	if len(m.Header) != protocol.DefaultHeaderLength && len(m.Header) != protocol.DefaultEventHeaderLength {
 		return protocol.ErrBadHeader
 	}
 
@@ -123,7 +144,9 @@ func (s *Protocol) SendMsg(m *mproto.Message) error {
 				if p != nil {
 					m.Clone()
 					h.SetSignallingType(protocol.SignallingAssign)
+					h.SetHeaderLength(protocol.DefaultHeaderLength)
 					h.SetDest(p.p.ID())
+					m.Header = m.Header[:protocol.DefaultHeaderLength]
 					select {
 					case p.sendQ.EnqueueC() <- m:
 					default:
@@ -174,23 +197,38 @@ func (s *Protocol) SendMsg(m *mproto.Message) error {
 }
 
 func (s *Protocol) RecvMsg() (*mproto.Message, error) {
+	return nil, mproto.ErrProtoOp
+}
+
+func (s *Protocol) exchange(index int, q *aggregateQ) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Errorf("exchange %d panic error: %v, stack:\n %s", index, err, debug.Stack())
+		} else {
+			log.Infof("event bus exchange line %d exist", index)
+		}
+		q.running.Store(false)
+		s.wg.Done()
+	}()
+
+	log.Infof("event bus exchange line %d starting...", index)
 	for {
-		s.Lock()
-		rq := s.recvQ
-		cq := s.closeQ
-		zq := s.sizeQ
-		s.Unlock()
+		q.RLock()
+		rq := q.recvQ
+		cq := q.closeQ
+		zq := q.sizeQ
+		q.RUnlock()
 
 		select {
 		case <-cq:
-			return nil, mproto.ErrClosed
+			return
 		case <-zq:
 			continue
 		case entry := <-rq:
 			m, p := entry.m, entry.p
 			h := protocol.Header{Data: m.Header}
 			// control signalling be not transmit
-			if h.SignallingType() == protocol.SignallingControl {
+			if h.SignallingType() == protocol.SignallingControl || h.Dest() == protocol.PipeEbus {
 				if h.IsRegisterEvent() {
 					_ = s.addEventPipe(p.Event(), p)
 				}
@@ -198,9 +236,36 @@ func (s *Protocol) RecvMsg() (*mproto.Message, error) {
 				continue
 			}
 
-			return m, nil
+			if q.trace {
+				log.Debugf("exchange line %d recv message: event=%s header=%s data_size=%d",
+					index, protocol.EventName(protocol.PipeEvent(m.Pipe)), protocol.StringHeader(m.Header), len(m.Body))
+			}
+
+			// router send
+			if err := s.SendMsg(m); err != nil {
+				m.Free()
+				log.Errorf("exchange line %d send message: event=%s header=%s error=%v",
+					index, protocol.EventName(protocol.PipeEvent(m.Pipe)), protocol.StringHeader(m.Header), err)
+			}
 		}
 	}
+}
+
+func (s *Protocol) Exchange() {
+	for i, q := range s.recvQS {
+		if q.running.CompareAndSwap(false, true) {
+			s.wg.Add(1)
+			go s.exchange(i+1, q)
+		}
+	}
+}
+
+func (s *Protocol) RecvQ(hash uint32) (sizeQ chan struct{}, recvQ chan recvQEntry) {
+	index := hash % uint32(len(s.recvQS))
+	q := s.recvQS[index]
+	q.RLock()
+	defer q.RUnlock()
+	return q.sizeQ, q.recvQ
 }
 
 func (s *Protocol) SetOption(name string, value interface{}) error {
@@ -225,14 +290,30 @@ func (s *Protocol) SetOption(name string, value interface{}) error {
 
 	case mproto.OptionReadQLen:
 		if v, ok := value.(int); ok && v >= 0 {
-			newQ := make(chan recvQEntry, v)
-			sizeQ := make(chan struct{})
 			s.Lock()
 			s.recvQLen = v
-			s.recvQ = newQ
-			sizeQ, s.sizeQ = s.sizeQ, sizeQ
 			s.Unlock()
-			close(sizeQ)
+			for _, q := range s.recvQS {
+				newQ := make(chan recvQEntry, v)
+				sizeQ := make(chan struct{})
+				q.Lock()
+				q.recvQLen = v
+				q.recvQ = newQ
+				sizeQ, q.sizeQ = q.sizeQ, sizeQ
+				q.Unlock()
+				close(sizeQ)
+			}
+			return nil
+		}
+		return mproto.ErrBadValue
+
+	case protocol.OptionTraceMessage:
+		if v, ok := value.(bool); ok {
+			for _, q := range s.recvQS {
+				q.Lock()
+				q.trace = v
+				q.Unlock()
+			}
 			return nil
 		}
 		return mproto.ErrBadValue
@@ -302,7 +383,7 @@ func (s *Protocol) registerEvent(p *Pipe) {
 	m := mangos.NewMessage(0)
 	defer m.Free()
 	m.Header = protocol.PutHeader(m.Header, protocol.PipeEbus,
-		protocol.SignallingControl|protocol.SignallingRegisterEvent, p.ID())
+		protocol.SignallingControl|protocol.SignallingRegisterEvent, p.ID(), 0)
 	if err := p.SendMsg(m); err != nil {
 		log.Errorf("%s, register event error: %s", s.String(), err)
 	}
@@ -325,15 +406,20 @@ func (s *Protocol) AddPipe(pp mproto.Pipe) error {
 			closeQ:     make(chan struct{}),
 			sendQ:      queue.NewQueueWithSize[*mproto.Message](s.sendQLen, s.sendQLen),
 		}
+		p.add()
+		pp.SetPrivate(p)
 	} else {
 		p = data.(*Pipe)
 	}
 	s.pipes[pp.ID()] = p
-	pp.SetPrivate(p)
 	s.Unlock()
 
 	s.registerEvent(p)
+	s.wg.Add(1)
+	p.add()
 	go p.sender()
+	s.wg.Add(1)
+	p.add()
 	go p.receiver()
 	return nil
 }
@@ -343,7 +429,6 @@ func (s *Protocol) RemovePipe(pp mproto.Pipe) {
 		s.Lock()
 		delete(s.pipes, pp.ID())
 		if pipes, ok := s.eventPipes[p.event]; ok {
-			// delete(pipes, pp.ID())
 			pipes = slices.DeleteFunc(pipes, func(pe *Pipe) bool {
 				return pe == p
 			})
@@ -371,6 +456,14 @@ func (*Protocol) Info() mproto.Info {
 	}
 }
 
+func (s *Protocol) closeAllPipes() {
+	s.RLock()
+	for _, p := range s.pipes {
+		go p.Close()
+	}
+	s.RUnlock()
+}
+
 func (s *Protocol) Close() error {
 	s.Lock()
 	if s.closed {
@@ -380,7 +473,13 @@ func (s *Protocol) Close() error {
 
 	s.closed = true
 	s.Unlock()
-	close(s.closeQ)
+
+	for _, q := range s.recvQS {
+		close(q.closeQ)
+	}
+
+	s.closeAllPipes()
+	s.wg.Wait()
 	return nil
 }
 
@@ -390,31 +489,27 @@ func (s *Protocol) SetPipeEventHook(v protocol.PipeEventHook) {
 	s.Unlock()
 }
 
-func (s *Protocol) WaitAllPipe() {
-	s.wg.Wait()
-}
-
 func (s *Protocol) Pipe(id uint32) protocol.Pipe {
-	s.Lock()
+	s.RLock()
 	p, _ := s.pipes[id]
-	s.Unlock()
+	s.RUnlock()
 	return p
 }
 
 func (s *Protocol) RangePipes(f func(uint32, protocol.Pipe) bool) {
-	s.Lock()
+	s.RLock()
 	for id, p := range s.pipes {
 		if !f(id, p) {
 			break
 		}
 	}
-	s.Unlock()
+	s.RUnlock()
 }
 
 func (s *Protocol) pipeEventHook(pe mangos.PipeEvent, mp mangos.Pipe) {
-	s.Lock()
+	s.RLock()
 	ph := s.hook
-	s.Unlock()
+	s.RUnlock()
 	if pp, ok := mp.(mproto.Pipe); ok {
 		switch pe {
 		case mangos.PipeEventAttaching:
@@ -425,6 +520,7 @@ func (s *Protocol) pipeEventHook(pe mangos.PipeEvent, mp mangos.Pipe) {
 				closeQ:     make(chan struct{}),
 				sendQ:      queue.NewQueueWithSize[*mproto.Message](s.sendQLen, s.sendQLen),
 			}
+			p.add()
 			pp.SetPrivate(p)
 			if ph != nil {
 				ph(pe, p)
@@ -435,8 +531,8 @@ func (s *Protocol) pipeEventHook(pe mangos.PipeEvent, mp mangos.Pipe) {
 				if ph != nil {
 					ph(pe, p)
 				}
-				p.release()
 				pp.SetPrivate(nil)
+				p.release()
 			}
 		default:
 			if ph != nil {
@@ -447,16 +543,19 @@ func (s *Protocol) pipeEventHook(pe mangos.PipeEvent, mp mangos.Pipe) {
 }
 
 // NewProtocol returns a new protocol implementation.
-func NewProtocol() *Protocol {
+func NewProtocol(exchangeLines int) *Protocol {
+	if exchangeLines <= 0 {
+		exchangeLines = defaultExchangeLines
+	}
 	s := &Protocol{
-		pipes: make(map[uint32]*Pipe),
-		// eventPipes: make(map[uint32]map[uint32]*Pipe),
+		pipes:      make(map[uint32]*Pipe),
 		eventPipes: make(map[uint32][]*Pipe),
-		closeQ:     make(chan struct{}),
-		sizeQ:      make(chan struct{}),
-		recvQ:      make(chan recvQEntry, defaultQLen),
+		recvQS:     make([]*aggregateQ, exchangeLines),
 		sendQLen:   defaultQLen,
 		recvQLen:   defaultQLen,
+	}
+	for i := 0; i < exchangeLines; i++ {
+		s.recvQS[i] = newAggregateQ()
 	}
 	return s
 }

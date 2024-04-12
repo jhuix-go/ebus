@@ -8,7 +8,7 @@ package client
 
 import (
 	"runtime/debug"
-	"sync/atomic"
+	`sync/atomic`
 	"time"
 
 	"go.nanomsg.org/mangos/v3"
@@ -35,9 +35,9 @@ type XClient struct {
 	opt     Options
 	watcher watch.Watcher
 	pipes   map[string]protocol.Pipe
-	seq     atomic.Uint32
 	pending map[uint64]*Call
 	q       *queue.Queue[*mangos.Message]
+	seq     atomic.Uint32
 	done    chan struct{}
 }
 
@@ -45,7 +45,7 @@ func NewXClient(cfg *Config, watchCfg *discovery.ClientConfig, handler PipeHandl
 	clt := &XClient{
 		handler: handler,
 		pipes:   make(map[string]protocol.Pipe),
-		q:       queue.NewQueueWithSize[*mangos.Message](0, defaultQLen),
+		q:       queue.NewQueueWithSize[*mangos.Message](defaultQLen, defaultQLen),
 	}
 	clt.Client = NewClient(cfg, clt)
 	if watchCfg != nil && len(watchCfg.Endpoints) > 0 {
@@ -117,7 +117,6 @@ func (c *XClient) OnPipeDataArrived(p protocol.Pipe, msg interface{}) error {
 		return nil
 	}
 
-	// return c.handler.OnPipeDataArrived(p, m)
 	c.handleMessage(m)
 	return nil
 }

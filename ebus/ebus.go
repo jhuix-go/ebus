@@ -79,14 +79,16 @@ func (s *Service) RunLoop() (err error) {
 		}()
 	}
 
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-
-		log.Infof("service is starting...")
-		s.svr.Serve()
-		log.Infof("service is exited.")
-	}()
+	log.Infof("service is starting...")
+	s.svr.Serve()
+	// s.wg.Add(1)
+	// go func() {
+	// 	defer s.wg.Done()
+	//
+	// 	log.Infof("service is starting...")
+	// 	s.svr.Serve()
+	// 	log.Infof("service is exited.")
+	// }()
 	return
 }
 

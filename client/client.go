@@ -234,7 +234,7 @@ func (h *pipeEventHook) PipeEventHook(pe mangos.PipeEvent, pp protocol.Pipe) int
 func (c *Client) pipeHeartHook(p protocol.Pipe) *mproto.Message {
 	m := mangos.NewMessage(0)
 	id := p.ID()
-	m.Header = protocol.PutHeader(m.Header, id, protocol.SignallingControl|protocol.SignallingHeart, protocol.PipeEbus)
+	m.Header = protocol.PutHeader(m.Header, id, protocol.SignallingControl|protocol.SignallingHeart, protocol.PipeEbus, 0)
 	if c.handler != nil {
 		c.handler.OnPipeTimer(p)
 	}
@@ -357,25 +357,13 @@ func (c *Client) establishConnection() {
 
 func (c *Client) Stop() {
 	_ = c.Close()
-	c.proto.WaitAllPipe()
 	c.wg.Wait()
 	c.handler = nil
 	log.Infof("<event> event client stopped")
 }
 
 func (c *Client) SendMessage(src uint32, dest uint32, hash uint64, m *mangos.Message) error {
-	signalling := protocol.SignallingAssign
-	if protocol.IsEventID(dest) {
-		signalling = protocol.SignallingEvent
-		if hash != 0 {
-			signalling |= protocol.SignallingHash
-		}
-	}
-	if signalling == protocol.SignallingEventHash {
-		m.Header = protocol.PutHashHeader(m.Header, src, dest, hash)
-	} else {
-		m.Header = protocol.PutHeader(m.Header, src, signalling, dest)
-	}
+	m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingAssign, dest, hash)
 	if err := c.socket.SendMsg(m); err != nil {
 		m.Free()
 		log.Errorf("<event> %d<->%d, send error: %s", src, dest, err)
@@ -397,7 +385,7 @@ func (c *Client) Send(src, dest uint32, data []byte) error {
 
 func (c *Client) Broadcast(data []byte) error {
 	m := mangos.NewMessage(len(data))
-	m.Header = protocol.PutHeader(m.Header, 0, protocol.SignallingAssign, 0)
+	m.Header = protocol.PutHeader(m.Header, 0, protocol.SignallingAssign, 0, 0)
 	if err := c.socket.SendMsg(m); err != nil {
 		m.Free()
 		log.Errorf("<event> broadcast error: %s", err)

@@ -22,8 +22,9 @@ const (
 )
 
 const (
-	OptionHeartTime = "HEART_TIME"
-	OptionReconnect = "RECONNECT"
+	OptionHeartTime    = "HEART_TIME"
+	OptionReconnect    = "RECONNECT"
+	OptionTraceMessage = "TRACE_MESSAGE"
 )
 
 const (
@@ -107,7 +108,6 @@ type PipeEventHook func(mangos.PipeEvent, Pipe) interface{}
 type Protocol interface {
 	protocol.Protocol
 	SetPipeEventHook(PipeEventHook)
-	WaitAllPipe()
 }
 
 type Socket interface {

@@ -8,11 +8,13 @@ package client
 
 import (
 	"net"
+	`sync/atomic`
 	"time"
 
 	"go.nanomsg.org/mangos/v3"
 	mproto "go.nanomsg.org/mangos/v3/protocol"
 
+	`github.com/jhuix-go/ebus/pkg/log`
 	"github.com/jhuix-go/ebus/protocol"
 )
 
@@ -21,6 +23,7 @@ type Pipe struct {
 	s           *Protocol
 	event       uint32
 	remote      uint32
+	state       atomic.Int64
 	closeQ      chan struct{}
 	sendQ       chan *mproto.Message
 	heartExpire time.Duration
@@ -97,16 +100,23 @@ func (p *Pipe) GetPrivate() interface{} {
 	return p.data
 }
 
+func (p *Pipe) add() {
+	p.state.Add(1)
+}
+
 func (p *Pipe) release() {
-	p.s = nil
-	p.hook = nil
-	p.data = nil
+	if p.state.Add(-1) == 0 {
+		p.s = nil
+		p.hook = nil
+		p.data = nil
+		p.p = nil
+	}
 }
 
 func (p *Pipe) receiver() {
 	s := p.s
 	pp := p.p
-	s.wg.Add(1)
+	log.Infof("pipe %d receiver is recving...", p.ID())
 outer:
 	for {
 		m := pp.RecvMsg()
@@ -132,12 +142,12 @@ outer:
 			continue
 		}
 
-		s.Lock()
+		s.RLock()
 		recvQ := s.recvQ
 		sizeQ := s.sizeQ
 		sendQ := p.sendQ
 		closeQ := p.closeQ
-		s.Unlock()
+		s.RUnlock()
 
 		if h.IsRegisterEvent() { // register event and response register remote
 			p.remote = h.Dest()
@@ -164,13 +174,15 @@ outer:
 		}
 	}
 	_ = pp.Close()
+	log.Infof("pipe %d receiver is ended", p.ID())
+	p.release()
 	s.wg.Done()
 }
 
 func (p *Pipe) sender() {
 	s := p.s
 	pp := p.p
-	s.wg.Add(1)
+	log.Infof("pipe %d sender is sending...", p.ID())
 	timeQ := nilQ
 	if p.heartExpire > 0 {
 		if p.heartTimer == nil {
@@ -207,5 +219,7 @@ outer:
 		p.heartTimer = nil
 	}
 	_ = pp.Close()
+	log.Infof("pipe %d sender is ended", p.ID())
+	p.release()
 	s.wg.Done()
 }

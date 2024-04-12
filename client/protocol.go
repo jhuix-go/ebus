@@ -25,6 +25,7 @@ const (
 )
 
 type Protocol struct {
+	sync.RWMutex
 	closed      bool
 	closeQ      chan struct{}
 	sizeQ       chan struct{}
@@ -43,7 +44,6 @@ type Protocol struct {
 	reconnect   bool
 	wg          sync.WaitGroup
 	hook        protocol.PipeEventHook
-	sync.Mutex
 }
 
 type recvQEntry struct {
@@ -65,27 +65,27 @@ const defaultQLen = 128
 
 func (s *Protocol) SendMsg(m *mproto.Message) error {
 	timeQ := nilQ
-	s.Lock()
+	s.RLock()
 	if s.closed {
-		s.Unlock()
+		s.RUnlock()
 		return mproto.ErrClosed
 	}
 
 	if len(m.Header) < protocol.DefaultHeaderLength {
-		s.Unlock()
+		s.RUnlock()
 		return protocol.ErrBadHeader
 	}
 
 	h := protocol.Header{Data: m.Header}
 	id := h.Src()
 	if id == 0 {
-		s.Unlock()
+		s.RUnlock()
 		return mproto.ErrNoPeers
 	}
 
 	p, ok := s.remotePipes[id]
 	if !ok {
-		s.Unlock()
+		s.RUnlock()
 		return mproto.ErrNoPeers
 	}
 
@@ -103,7 +103,7 @@ func (s *Protocol) SendMsg(m *mproto.Message) error {
 	}
 	sizeQ := s.sizeQ
 	closeQ := s.closeQ
-	s.Unlock()
+	s.RUnlock()
 
 	select {
 	case <-closeQ:
@@ -135,7 +135,7 @@ func (s *Protocol) RecvMsg() (*mproto.Message, error) {
 	}()
 	for {
 		timeQ := nilQ
-		s.Lock()
+		s.RLock()
 		if s.recvExpire > 0 {
 			if s.recvTimer == nil {
 				s.recvTimer = time.NewTimer(s.recvExpire)
@@ -147,7 +147,7 @@ func (s *Protocol) RecvMsg() (*mproto.Message, error) {
 		closeQ := s.closeQ
 		recvQ := s.recvQ
 		sizeQ := s.sizeQ
-		s.Unlock()
+		s.RUnlock()
 		select {
 		case <-closeQ:
 			return nil, mproto.ErrClosed
@@ -230,7 +230,6 @@ func (s *Protocol) SetOption(name string, value interface{}) error {
 			sizeQ, s.sizeQ = s.sizeQ, sizeQ
 			s.Unlock()
 			close(sizeQ)
-
 			return nil
 		}
 		return mproto.ErrBadValue
@@ -243,7 +242,6 @@ func (s *Protocol) SetOption(name string, value interface{}) error {
 			sizeQ, s.sizeQ = s.sizeQ, sizeQ
 			s.Unlock()
 			close(sizeQ)
-
 			return nil
 		}
 		return mproto.ErrBadValue
@@ -258,34 +256,34 @@ func (s *Protocol) GetOption(option string) (interface{}, error) {
 	case mproto.OptionRaw:
 		return false, nil
 	case protocol.OptionReconnect:
-		s.Lock()
+		s.RLock()
 		v := s.reconnect
-		s.Unlock()
+		s.RUnlock()
 		return v, nil
 	case mproto.OptionBestEffort:
-		s.Lock()
+		s.RLock()
 		v := s.bestEffort
-		s.Unlock()
+		s.RUnlock()
 		return v, nil
 	case mproto.OptionRecvDeadline:
-		s.Lock()
+		s.RLock()
 		v := s.recvExpire
-		s.Unlock()
+		s.RUnlock()
 		return v, nil
 	case mproto.OptionSendDeadline:
-		s.Lock()
+		s.RLock()
 		v := s.sendExpire
-		s.Unlock()
+		s.RUnlock()
 		return v, nil
 	case mproto.OptionReadQLen:
-		s.Lock()
+		s.RLock()
 		v := s.recvQLen
-		s.Unlock()
+		s.RUnlock()
 		return v, nil
 	case mproto.OptionWriteQLen:
-		s.Lock()
+		s.RLock()
 		v := s.sendQLen
-		s.Unlock()
+		s.RUnlock()
 		return v, nil
 	}
 
@@ -327,12 +325,17 @@ func (s *Protocol) AddPipe(pp mproto.Pipe) error {
 			heartExpire: s.heartExpire,
 			hook:        s.hook,
 		}
+		p.add()
 		pp.SetPrivate(p)
 	} else {
 		p = data.(*Pipe)
 	}
 	s.pipes[pp.ID()] = p
+	s.wg.Add(1)
+	p.add()
 	go p.receiver()
+	s.wg.Add(1)
+	p.add()
 	go p.sender()
 	return nil
 }
@@ -378,6 +381,14 @@ func (*Protocol) Info() mproto.Info {
 	}
 }
 
+func (s *Protocol) closeAllPipes() {
+	s.RLock()
+	for _, p := range s.pipes {
+		go p.Close()
+	}
+	s.RUnlock()
+}
+
 func (s *Protocol) Close() error {
 	s.Lock()
 	if s.closed {
@@ -387,6 +398,8 @@ func (s *Protocol) Close() error {
 	s.closed = true
 	s.Unlock()
 	close(s.closeQ)
+	s.closeAllPipes()
+	s.wg.Wait()
 	return nil
 }
 
@@ -396,37 +409,33 @@ func (s *Protocol) SetPipeEventHook(v protocol.PipeEventHook) {
 	s.Unlock()
 }
 
-func (s *Protocol) WaitAllPipe() {
-	s.wg.Wait()
-}
-
 func (s *Protocol) Pipe(id uint32) protocol.Pipe {
-	s.Lock()
+	s.RLock()
 	p, _ := s.remotePipes[id]
-	s.Unlock()
+	s.RUnlock()
 	return p
 }
 
 func (s *Protocol) RangePipes(f func(uint32, protocol.Pipe) bool) {
-	s.Lock()
+	s.RLock()
 	for id, p := range s.remotePipes {
 		if !f(id, p) {
 			break
 		}
 	}
-	s.Unlock()
+	s.RUnlock()
 }
 
 func (s *Protocol) pipeEventHook(pe mangos.PipeEvent, mp mangos.Pipe) {
-	s.Lock()
+	s.RLock()
 	ph := s.hook
-	s.Unlock()
+	s.RUnlock()
 	if pp, ok := mp.(mproto.Pipe); ok {
 		switch pe {
 		case mangos.PipeEventAttaching:
-			s.Lock()
+			s.RLock()
 			id, _ := s.events[mp.Dialer()]
-			s.Unlock()
+			s.RUnlock()
 			p := &Pipe{
 				p:           pp,
 				s:           s,
@@ -436,6 +445,7 @@ func (s *Protocol) pipeEventHook(pe mangos.PipeEvent, mp mangos.Pipe) {
 				heartExpire: s.heartExpire,
 				hook:        s.hook,
 			}
+			p.add()
 			pp.SetPrivate(p)
 			if ph != nil {
 				ph(pe, p)
@@ -446,8 +456,8 @@ func (s *Protocol) pipeEventHook(pe mangos.PipeEvent, mp mangos.Pipe) {
 				if ph != nil {
 					ph(pe, p)
 				}
-				p.release()
 				pp.SetPrivate(nil)
+				p.release()
 			}
 		default:
 			if ph != nil {
