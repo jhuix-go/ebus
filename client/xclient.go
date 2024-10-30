@@ -18,6 +18,7 @@ import (
 	"github.com/jhuix-go/ebus/pkg/discovery/watch"
 	"github.com/jhuix-go/ebus/pkg/log"
 	"github.com/jhuix-go/ebus/pkg/queue"
+	`github.com/jhuix-go/ebus/pkg/runtime`
 	"github.com/jhuix-go/ebus/protocol"
 )
 
@@ -75,12 +76,11 @@ func (c *XClient) RemoveClient(_ string, addr string) {
 }
 
 func (c *XClient) dispatch() {
-	defer func() {
-		if err := recover(); err != nil {
+	defer runtime.HandleCrash(false, func(err any) {
+		if err != nil {
 			log.Errorf("<event> handle panic: %v\n%s", err, debug.Stack())
 		}
-		c.wg.Done()
-	}()
+	})
 
 	for {
 		select {
@@ -102,8 +102,9 @@ func (c *XClient) OnPipeConnected(p protocol.Pipe) {
 	if c.watcher != nil {
 		c.watcher.Update(p.Pipe().Address(), p)
 	}
-	c.wg.Add(1)
-	go c.dispatch()
+	c.wg.Start(func() {
+		c.dispatch()
+	})
 	c.handler.OnPipeConnected(p)
 }
 
@@ -133,17 +134,16 @@ func (c *XClient) OnPipeTimer(p protocol.Pipe) {
 }
 
 func (c *XClient) Watch() {
-	c.wg.Add(1)
-	go func() {
+	c.wg.Start(func() {
 		c.watcher.Watch()
-		c.wg.Done()
-	}()
+	})
 }
 
 func (c *XClient) Stop() {
 	c.watcher.Close()
 	close(c.done)
 	c.Client.Stop()
+	c.wg.Wait()
 }
 
 func (c *XClient) Pick(hash string) (protocol.Pipe, error) {

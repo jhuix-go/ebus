@@ -19,13 +19,15 @@ import (
 // )
 
 const (
-	DefaultFlag              = 0x6562 // eb
-	DefaultVersion           = 0x1
-	DefaultHeaderLength      = 12
-	DefaultEventHeaderLength = 20
-	MaxHeaderLength          = 60
-	MaskVersion              = 0xF0
-	MaskHeaderLength         = 0x0F
+	DefaultFlag                     = 0x6562 // eb
+	DefaultVersion                  = 0x1
+	DefaultHeaderLength             = 12
+	DefaultEventHeaderLength        = 20
+	MaxHeaderLength                 = 60
+	MaskVersion                     = 0xF0
+	MaskHeaderLength                = 0x0F
+	MaskEventID              uint32 = 0x80000000 // 事件ID掩码
+	MaskInterIP              uint32 = 0x7FFFFFFF // 内部IP掩码
 )
 
 // Signalling Format (UINT8):
@@ -34,19 +36,32 @@ const (
 //	 *   *   *   *   *   *   *   *
 //	 │   │   │   │   │           │
 //	 └─┬─┘   │   │   └─────┬─────┘
-//	Reserve  │   │      Command - 0x00 ~ 0x0F
+//	Reserve  │   │         └> Command - 0x00 ~ 0x0F
 //	         │   └> Event - 0x10
 //	         └> Control - 0x20
 //	0    0   0   0 -> Assign - 0x00
 const (
-	SignallingCommand       uint8 = 0x0F
-	SignallingAssign        uint8 = 0x00
-	SignallingEvent         uint8 = 0x10
-	SignallingControl       uint8 = 0x20
-	SignallingHeart         uint8 = 0x00
-	SignallingRegisterEvent uint8 = 0x01
-	SignallingHash          uint8 = 0x02
-	SignallingEventHash           = SignallingEvent | SignallingHash
+	SignallingCommand uint8 = 0x0F // Command mask
+	SignallingType    uint8 = 0xF0 // Type Mask
+	SignallingAssign  uint8 = 0x00 // Assign flag
+	SignallingEvent   uint8 = 0x10 // Event flag
+	SignallingControl uint8 = 0x20 // Control flag
+)
+
+// Control Command
+const (
+	SignallingHeart         uint8 = 0x00 // Heart
+	SignallingRegisterEvent uint8 = 0x01 // Register event
+	SignallingDhc           uint8 = 0x02 // Dynamic host configuration
+)
+
+// Event Command
+const (
+	SignallingRandom uint8 = 0x00 // random
+	SignallingHash   uint8 = 0x01 // Hash
+	SignallingRound  uint8 = 0x02 // round
+
+	SignallingEventHash = SignallingEvent | SignallingHash // Hash event command mask
 )
 
 /* Header Format:
@@ -63,11 +78,16 @@ type Header struct {
 	Data []byte
 }
 
-func PutHeader(header []byte, src uint32, signalling uint8, dest uint32, hash uint64) []byte {
+func PutHeader(header []byte, src uint32, signalling uint8, dest uint32, key uint64) []byte {
 	headerLength := DefaultHeaderLength
-	isEvent := IsEventID(dest)
+	isEvent := IsEvent(signalling) || IsEventID(dest)
+	isControl := IsControl(signalling)
 	if isEvent {
-		headerLength = DefaultEventHeaderLength
+		dest |= MaskEventID
+		signalling |= SignallingEvent
+		if !isControl {
+			headerLength = DefaultEventHeaderLength
+		}
 	}
 	if cap(header) < headerLength {
 		return header
@@ -80,14 +100,10 @@ func PutHeader(header []byte, src uint32, signalling uint8, dest uint32, hash ui
 	h.SetHeaderLength(uint8(headerLength))
 	h.SetSrc(src)
 	h.SetDest(dest)
-	if isEvent {
-		signalling |= SignallingEvent
-		if hash != 0 {
-			signalling |= SignallingHash
-		}
-		h.SetHash(hash)
-	}
 	h.SetSignalling(signalling)
+	if headerLength == DefaultEventHeaderLength {
+		h.SetBalanceKey(key)
+	}
 	return header
 }
 
@@ -98,7 +114,7 @@ func StringHeader(header []byte) string {
 
 func EventName(event uint32) string {
 	var buf [4]byte
-	binary.BigEndian.PutUint32(buf[:4], event&0x7FFFFFFF)
+	binary.BigEndian.PutUint32(buf[:4], event&^MaskEventID)
 	return string(buf[:])
 }
 
@@ -110,13 +126,21 @@ func EventNameN(name string) uint32 {
 		for i := 0; i < length; i++ {
 			buf[i] = name[i]
 		}
-		id = binary.BigEndian.Uint32(buf[:4]) | 0x80000000
+		id = binary.BigEndian.Uint32(buf[:4]) | MaskEventID
 	}
 	return id
 }
 
 func IsEventID(v uint32) bool {
-	return (v&0x80000000) != 0 && v != PipeEbus
+	return (v&MaskEventID) != 0 && v != PipeEbus
+}
+
+func IsEvent(v uint8) bool {
+	return (v & SignallingEvent) != 0
+}
+
+func IsControl(v uint8) bool {
+	return (v & SignallingControl) != 0
 }
 
 func (h *Header) String() string {
@@ -166,27 +190,47 @@ func (h *Header) SetSignalling(v uint8) {
 }
 
 func (h *Header) SignallingType() uint8 {
-	return h.Signalling() & ^SignallingCommand
+	return h.Signalling() & SignallingType
 }
 
 func (h *Header) SetSignallingType(v uint8) {
-	h.Data[3] = (h.Data[3] & SignallingCommand) | v
+	h.Data[3] = (h.Data[3] & SignallingCommand) | (v & SignallingType)
+}
+
+func (h *Header) SignallingCommand() uint8 {
+	return h.Signalling() & SignallingCommand
+}
+
+func (h *Header) SetSignallingCommand(v uint8) {
+	h.Data[3] = (h.Data[3] & SignallingType) | (v & SignallingCommand)
 }
 
 func (h *Header) IsEvent() bool {
 	return h.Signalling()&SignallingEvent == SignallingEvent
 }
 
+func (h *Header) IsControl() bool {
+	return h.Signalling()&SignallingControl == SignallingControl
+}
+
 func (h *Header) IsHeart() bool {
-	return h.Signalling() == SignallingControl|SignallingHeart
+	return h.Signalling()&(SignallingControl|SignallingCommand) == SignallingControl|SignallingHeart
 }
 
 func (h *Header) IsRegisterEvent() bool {
-	return h.Signalling() == SignallingControl|SignallingRegisterEvent
+	return h.Signalling()&(SignallingControl|SignallingCommand) == SignallingControl|SignallingRegisterEvent
+}
+
+func (h *Header) IsDhc() bool {
+	return h.Signalling()&(SignallingControl|SignallingCommand) == SignallingControl|SignallingDhc
 }
 
 func (h *Header) HasHash() bool {
-	return h.Signalling()&SignallingCommand == SignallingHash
+	return h.IsEvent() && h.SignallingCommand() == SignallingHash
+}
+
+func (h *Header) HasRound() bool {
+	return h.IsEvent() && h.SignallingCommand() == SignallingRound
 }
 
 // func (h *Header) IsRegisterRemote() bool {
@@ -209,7 +253,7 @@ func (h *Header) SetDest(v uint32) {
 	binary.BigEndian.PutUint32(h.Data[8:12], v)
 }
 
-func (h *Header) Hash() uint64 {
+func (h *Header) BalanceKey() uint64 {
 	if len(h.Data) >= DefaultEventHeaderLength {
 		return binary.BigEndian.Uint64(h.Data[12:20])
 	}
@@ -217,7 +261,7 @@ func (h *Header) Hash() uint64 {
 	return 0
 }
 
-func (h *Header) SetHash(v uint64) {
+func (h *Header) SetBalanceKey(v uint64) {
 	if len(h.Data) >= DefaultEventHeaderLength {
 		binary.BigEndian.PutUint64(h.Data[12:20], v)
 	}

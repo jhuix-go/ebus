@@ -145,18 +145,18 @@ func (s *Server) Listen(addr string) error {
 	return nil
 }
 
-func (s *Server) SendEvent(src, event uint32, hash uint64, data []byte) error {
-	m := mangos.NewMessage(len(data))
-	m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingEvent, event, hash)
-	m.Body = append(m.Body, data...)
-	if err := s.socket.SendMsg(m); err != nil {
-		m.Free()
-		log.Errorf("%d<->%s, send error: %s", src, protocol.EventName(event), err)
-		return err
-	}
-
-	return nil
-}
+// func (s *Server) SendEvent(src, event uint32, hash uint64, data []byte) error {
+// 	m := mangos.NewMessage(len(data))
+// 	m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingEvent, event, hash)
+// 	m.Body = append(m.Body, data...)
+// 	if err := s.socket.SendMsg(m); err != nil {
+// 		m.Free()
+// 		log.Errorf("%d<->%s, send error: %s", src, protocol.EventName(event), err)
+// 		return err
+// 	}
+//
+// 	return nil
+// }
 
 func (s *Server) Send(src, dest uint32, hash uint64, data []byte) error {
 	m := mangos.NewMessage(len(data))

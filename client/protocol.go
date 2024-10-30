@@ -7,12 +7,15 @@
 package client
 
 import (
+	`fmt`
 	"sync"
 	"time"
 
 	"go.nanomsg.org/mangos/v3"
 	mproto "go.nanomsg.org/mangos/v3/protocol"
 
+	`github.com/jhuix-go/ebus/pkg/log`
+	`github.com/jhuix-go/ebus/pkg/runtime`
 	"github.com/jhuix-go/ebus/protocol"
 )
 
@@ -42,7 +45,7 @@ type Protocol struct {
 	sendQLen    int
 	bestEffort  bool
 	reconnect   bool
-	wg          sync.WaitGroup
+	wg          runtime.WaitGroup
 	hook        protocol.PipeEventHook
 }
 
@@ -143,6 +146,10 @@ func (s *Protocol) RecvMsg() (*mproto.Message, error) {
 				s.recvTimer.Reset(s.recvExpire)
 			}
 			timeQ = s.recvTimer.C
+		} else {
+			if s.recvTimer != nil {
+				s.recvTimer.Stop()
+			}
 		}
 		closeQ := s.closeQ
 		recvQ := s.recvQ
@@ -161,8 +168,8 @@ func (s *Protocol) RecvMsg() (*mproto.Message, error) {
 				continue
 			}
 
-			if h.IsRegisterEvent() {
-				_ = s.addRemotePipe(p.remote, p)
+			if h.IsDhc() {
+				_ = s.addRemotePipe(p)
 				m.Free()
 				continue
 			}
@@ -290,13 +297,14 @@ func (s *Protocol) GetOption(option string) (interface{}, error) {
 	return nil, mproto.ErrBadOption
 }
 
-func (s *Protocol) addRemotePipe(src uint32, p *Pipe) error {
+func (s *Protocol) addRemotePipe(p *Pipe) error {
 	s.Lock()
 	if s.closed {
 		s.Unlock()
 		return mproto.ErrClosed
 	}
 
+	var src = p.remote
 	s.remotePipes[src] = p
 	ph := s.hook
 	s.Unlock()
@@ -307,10 +315,26 @@ func (s *Protocol) addRemotePipe(src uint32, p *Pipe) error {
 	return nil
 }
 
+func (s *Protocol) String() string {
+	info := s.Info()
+	return fmt.Sprintf("{\"self\":%d,\"self_name\":\"%s\",\"peer\":%d,\"peer_name\":\"%s\"}",
+		info.Self, info.SelfName, info.Peer, info.PeerName)
+}
+
+func (s *Protocol) registerEvent(p *Pipe) {
+	m := mangos.NewMessage(0)
+	defer m.Free()
+	m.Header = protocol.PutHeader(m.Header, p.ID(),
+		protocol.SignallingControl|protocol.SignallingRegisterEvent, p.Event(), 0)
+	if err := p.SendMsg(m); err != nil {
+		log.Errorf("%s, register event error: %s", s.String(), err)
+	}
+}
+
 func (s *Protocol) AddPipe(pp mproto.Pipe) error {
 	s.Lock()
-	defer s.Unlock()
 	if s.closed {
+		s.Unlock()
 		return mproto.ErrClosed
 	}
 
@@ -331,12 +355,17 @@ func (s *Protocol) AddPipe(pp mproto.Pipe) error {
 		p = data.(*Pipe)
 	}
 	s.pipes[pp.ID()] = p
-	s.wg.Add(1)
+	s.Unlock()
+
+	s.registerEvent(p)
 	p.add()
-	go p.receiver()
-	s.wg.Add(1)
+	s.wg.Start(func() {
+		p.receiver()
+	})
 	p.add()
-	go p.sender()
+	s.wg.Start(func() {
+		p.sender()
+	})
 	return nil
 }
 
