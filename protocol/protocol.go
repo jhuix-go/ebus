@@ -22,8 +22,9 @@ const (
 )
 
 const (
-	OptionHeartTime = "HEART_TIME"
-	OptionReconnect = "RECONNECT"
+	OptionHeartTime    = "HEART_TIME"
+	OptionReconnect    = "RECONNECT"
+	OptionTraceMessage = "TRACE_MESSAGE"
 )
 
 const (

@@ -18,6 +18,7 @@ import (
 	"go.nanomsg.org/mangos/v3/transport/all"
 
 	"github.com/jhuix-go/ebus/pkg/log"
+	`github.com/jhuix-go/ebus/pkg/runtime`
 	"github.com/jhuix-go/ebus/protocol"
 )
 
@@ -37,7 +38,7 @@ type Client struct {
 	closed    bool
 	establish bool
 	times     map[uint32]*time.Timer
-	wg        sync.WaitGroup
+	wg        runtime.WaitGroup
 	sync.Mutex
 }
 
@@ -172,8 +173,9 @@ func (c *Client) pipeEventHook(pe mangos.PipeEvent, pp protocol.Pipe) interface{
 			protocol.EventName(eventId), pp.LocalAddr(), pp.ID(), pp.RemoteAddr(), pp.RemoteID())
 		if !c.establish {
 			c.establish = true
-			c.wg.Add(1)
-			go c.establishConnection()
+			c.wg.Start(func() {
+				c.establishConnection()
+			})
 		}
 	case mangos.PipeEventAttached:
 		log.Infof("<event> %s connection attached: %s(%d)<->%s(%d)",
@@ -300,15 +302,14 @@ func (c *Client) onConnection(p protocol.Pipe) {
 }
 
 func (c *Client) establishConnection() {
-	defer func() {
-		if err := recover(); err != nil {
+	defer runtime.HandleCrash(false, func(err any) {
+		if err != nil {
 			log.Errorf("<event> handle panic: %v\n%s", err, debug.Stack())
 		} else {
 			log.Infof("<event> event client closed")
 		}
 		_ = c.Close()
-		c.wg.Done()
-	}()
+	})
 
 	for {
 		m, err := c.socket.RecvMsg()

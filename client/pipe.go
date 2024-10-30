@@ -126,6 +126,7 @@ outer:
 
 		if len(m.Body) < protocol.DefaultHeaderLength {
 			m.Free() // ErrGarbled
+			log.Warnf("pipe %d receive invaild body", p.ID())
 			continue
 		}
 
@@ -133,34 +134,45 @@ outer:
 		h := protocol.Header{Data: m.Body[:headerLength]}
 		if h.Flag() != protocol.DefaultFlag {
 			m.Free()
+			log.Errorf("pipe %d receive invaild ebus protocol", p.ID())
 			break
 		}
 
 		headerLength = int(h.HeaderLength())
 		if headerLength < protocol.DefaultHeaderLength || headerLength > protocol.MaxHeaderLength {
 			m.Free()
+			log.Warnf("pipe %d receive invaild header", p.ID())
 			continue
 		}
 
-		s.Lock()
+		s.RLock()
 		recvQ := s.recvQ
 		sizeQ := s.sizeQ
-		sendQ := p.sendQ
+		// sendQ := p.sendQ
 		closeQ := p.closeQ
-		s.Unlock()
+		s.RUnlock()
 
-		if h.IsRegisterEvent() { // register event and response register remote
-			p.remote = h.Dest()
-			m.Clone()
-			h.SetDest(p.event)
-			h.SetSrc(p.ID())
-			select {
-			case sendQ <- m:
+		if h.IsControl() {
+			switch h.SignallingCommand() {
+			case protocol.SignallingDhc:
+				p.remote = h.Dest()
+			case protocol.SignallingHeart:
 			default:
 				m.Free()
+				continue
 			}
 		}
-
+		// if h.IsRegisterEvent() { // register event and response register remote
+		// 	p.remote = h.Dest()
+		// 	m.Clone()
+		// 	h.SetDest(p.event)
+		// 	h.SetSrc(p.ID())
+		// 	select {
+		// 	case sendQ <- m:
+		// 	default:
+		// 		m.Free()
+		// 	}
+		// }
 		m.Header = m.Body[:headerLength]
 		m.Body = m.Body[headerLength:]
 		entry := recvQEntry{m, p}
@@ -176,11 +188,9 @@ outer:
 	_ = pp.Close()
 	log.Infof("pipe %d receiver is ended", p.ID())
 	p.release()
-	s.wg.Done()
 }
 
 func (p *Pipe) sender() {
-	s := p.s
 	pp := p.p
 	log.Infof("pipe %d sender is sending...", p.ID())
 	timeQ := nilQ
@@ -221,5 +231,4 @@ outer:
 	_ = pp.Close()
 	log.Infof("pipe %d sender is ended", p.ID())
 	p.release()
-	s.wg.Done()
 }

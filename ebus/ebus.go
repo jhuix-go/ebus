@@ -7,12 +7,11 @@
 package ebus
 
 import (
-	`sync`
-
 	`github.com/jhuix-go/ebus/pkg/app`
 	`github.com/jhuix-go/ebus/pkg/discovery`
 	`github.com/jhuix-go/ebus/pkg/discovery/registry`
 	`github.com/jhuix-go/ebus/pkg/log`
+	`github.com/jhuix-go/ebus/pkg/runtime`
 	`github.com/jhuix-go/ebus/server`
 )
 
@@ -21,7 +20,7 @@ type Service struct {
 	svr       *server.Server
 	registrar registry.Registrar
 	svcInfo   *registry.ServiceInfo
-	wg        sync.WaitGroup
+	wg        runtime.WaitGroup
 }
 
 func NewService() *Service {
@@ -69,31 +68,21 @@ func (s *Service) RunLoop() (err error) {
 	}
 
 	if s.registrar != nil {
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
-
+		s.wg.Start(func() {
 			log.Infof("register is starting...")
 			_ = s.registrar.Register(s.svcInfo)
 			log.Infof("register is exited.")
-		}()
+		})
 	}
 
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-
-		log.Infof("service is starting...")
-		s.svr.Serve()
-		log.Infof("service is exited.")
-	}()
+	log.Infof("service is starting...")
+	s.svr.Serve()
 	return
 }
 
 func (s *Service) Destroy() {
 	log.Infof("service is stopping...")
 	if s.registrar != nil {
-		// _ = s.registrar.Unregister(s.svcInfo)
 		s.registrar.Close()
 	}
 	if s.svr != nil {

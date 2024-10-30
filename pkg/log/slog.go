@@ -438,7 +438,7 @@ func InitLogger(appName string, o *Options) {
 	if opt.Level > NoneLevel {
 		l := newLogger()
 		l.SetAsync(opt.Async)
+		l.SetLevel(opt.Level)
 		defaultLogger = l
-		defaultLogger.SetLevel(opt.Level)
 	}
 }

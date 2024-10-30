@@ -19,6 +19,10 @@ import (
 	"github.com/jhuix-go/ebus/protocol"
 )
 
+type RecvQueue interface {
+	RecvQ(hash uint64) (recvQ chan struct{}, sizeQ chan struct{})
+}
+
 type Pipe struct {
 	p          mproto.Pipe
 	proto      *Protocol
@@ -109,7 +113,6 @@ func (p *Pipe) release() {
 }
 
 func (p *Pipe) sender() {
-	s := p.proto
 	pp := p.p
 	log.Infof("pipe %s sender is sending...", protocol.InetNtoA(p.ID()))
 outer:
@@ -129,7 +132,6 @@ outer:
 	_ = pp.Close()
 	log.Infof("pipe %s sender is ended", protocol.InetNtoA(p.ID()))
 	p.release()
-	s.wg.Done()
 }
 
 func (p *Pipe) receiver() {
@@ -145,6 +147,7 @@ outer:
 
 		if len(m.Body) < protocol.DefaultHeaderLength {
 			m.Free() // ErrGarbled
+			log.Warnf("pipe %d receive invaild body", protocol.InetNtoA(p.ID()))
 			continue outer
 		}
 
@@ -152,40 +155,47 @@ outer:
 		h := protocol.Header{Data: m.Body[:headerLength]}
 		if h.Flag() != protocol.DefaultFlag {
 			m.Free()
+			log.Errorf("pipe %d receive invaild ebus protocol", protocol.InetNtoA(p.ID()))
 			break
 		}
 
 		headerLength = int(h.HeaderLength())
 		if headerLength < protocol.DefaultHeaderLength || headerLength > protocol.MaxHeaderLength {
 			m.Free()
+			log.Warnf("pipe %d receive invaild header", protocol.InetNtoA(p.ID()))
 			break
 		}
 
-		s.Lock()
-		rq := s.recvQ
-		zq := s.sizeQ
+		s.RLock()
 		sq := p.sendQ
 		cq := p.closeQ
-		s.Unlock()
+		s.RUnlock()
 
 		m.Header = m.Body[:headerLength]
 		m.Body = m.Body[headerLength:]
-		if h.IsRegisterEvent() { // register event and register remote
-			p.remote = h.Src()
-			p.event = h.Dest()
-		} else if h.IsHeart() { // response heart
-			m.Clone()
-			h.SetDest(pp.ID())
-			h.SetSrc(protocol.PipeEbus)
-			select {
-			case sq.EnqueueC() <- m:
+		if h.IsControl() {
+			switch h.SignallingCommand() {
+			case protocol.SignallingHeart:
+				m.Clone()
+				h.SetDest(pp.ID())
+				h.SetSrc(protocol.PipeEbus)
+				select {
+				case sq.EnqueueC() <- m:
+				default:
+					m.Free()
+				}
+				m.Free()
+				continue
+			case protocol.SignallingRegisterEvent:
+				p.remote = h.Src()
+				p.SetEvent(h.Dest())
 			default:
 				m.Free()
+				continue
 			}
-			m.Free()
-			continue
 		}
 
+		zq, rq := s.RecvQ(pp.ID())
 		entry := recvQEntry{m: m, p: p}
 		select {
 		case rq <- entry:
@@ -198,5 +208,4 @@ outer:
 	_ = pp.Close()
 	log.Infof("pipe %s receiver is ended...", protocol.InetNtoA(p.ID()))
 	p.release()
-	s.wg.Done()
 }

@@ -84,18 +84,7 @@ func (c *XClient) send(ctx context.Context, src, dest uint32, eventHash uint64, 
 
 	totalL := message.HeaderLength + 4 + (4 + message.SizeMeta(call.ReqMetadata)) + (4 + len(data))
 	m := mangos.NewMessage(totalL)
-	signalling := protocol.SignallingAssign
-	if protocol.IsEventID(dest) {
-		signalling = protocol.SignallingEvent
-		if eventHash != 0 {
-			signalling = protocol.SignallingEventHash
-		}
-	}
-	if signalling == protocol.SignallingEventHash {
-		m.Header = protocol.PutHashHeader(m.Header, src, dest, eventHash)
-	} else {
-		m.Header = protocol.PutHeader(m.Header, src, signalling, dest)
-	}
+	m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingAssign, dest, eventHash)
 	req := message.GetMessage()
 	defer req.Free()
 

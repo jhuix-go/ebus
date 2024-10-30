@@ -7,10 +7,7 @@
 package server
 
 import (
-	"errors"
 	"fmt"
-	"runtime/debug"
-	"sync"
 	"time"
 
 	"go.nanomsg.org/mangos/v3"
@@ -24,7 +21,6 @@ type Server struct {
 	cfg    *Config
 	proto  *Protocol
 	socket protocol.Socket
-	wg     sync.WaitGroup
 }
 
 func NewServer(cfg *Config) *Server {
@@ -46,7 +42,7 @@ func NewServer(cfg *Config) *Server {
 	}
 	cfg = &config
 	all.AddTransports(nil)
-	proto := NewProtocol()
+	proto := NewProtocol(cfg.ExchangeLines)
 	socket := protocol.MakeSocket(proto, proto.pipeEventHook)
 
 	if cfg.SendChanSize > 0 {
@@ -58,6 +54,7 @@ func NewServer(cfg *Config) *Server {
 	if cfg.ReadTimeout > 0 {
 		_ = socket.SetOption(mangos.OptionRecvDeadline, cfg.ReadTimeout)
 	}
+	_ = socket.SetOption(protocol.OptionTraceMessage, cfg.TraceMessage)
 	// if cfg.WriteTimeout > 0 {
 	// 	_ = socket.SetOption(mangos.OptionSendDeadline, cfg.WriteTimeout)
 	// }
@@ -70,6 +67,9 @@ func NewServer(cfg *Config) *Server {
 
 func (s *Server) SetTraceMessage(trace bool) {
 	s.cfg.TraceMessage = trace
+	if s.socket != nil {
+		_ = s.socket.SetOption(protocol.OptionTraceMessage, trace)
+	}
 }
 
 func (s *Server) SetSendSize(v int) {
@@ -145,13 +145,26 @@ func (s *Server) Listen(addr string) error {
 	return nil
 }
 
-func (s *Server) Send(src, dest uint32, data []byte, hash uint64) error {
+// func (s *Server) SendEvent(src, event uint32, hash uint64, data []byte) error {
+// 	m := mangos.NewMessage(len(data))
+// 	m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingEvent, event, hash)
+// 	m.Body = append(m.Body, data...)
+// 	if err := s.socket.SendMsg(m); err != nil {
+// 		m.Free()
+// 		log.Errorf("%d<->%s, send error: %s", src, protocol.EventName(event), err)
+// 		return err
+// 	}
+//
+// 	return nil
+// }
+
+func (s *Server) Send(src, dest uint32, hash uint64, data []byte) error {
 	m := mangos.NewMessage(len(data))
 	m.Header = protocol.PutHeader(m.Header, src, protocol.SignallingAssign, dest, hash)
 	m.Body = append(m.Body, data...)
 	if err := s.socket.SendMsg(m); err != nil {
 		m.Free()
-		log.Errorf("%s<->%s, send error: %s", protocol.EventName(src), protocol.EventName(dest), err)
+		log.Errorf("%d<->%d, send error: %s", src, dest, err)
 		return err
 	}
 
@@ -185,45 +198,7 @@ func (s *Server) RangePipes(f func(uint32, protocol.Pipe) bool) {
 }
 
 func (s *Server) Serve() {
-	s.wg.Add(1)
-	defer func() {
-		if err := recover(); err != nil {
-			log.Errorf("recv panic error: %v, stack:\n %s", err, debug.Stack())
-		} else {
-			log.Infof("event bus closed")
-		}
-		_ = s.Close()
-		s.wg.Done()
-	}()
-
-	for {
-		m, err := s.socket.RecvMsg()
-		if err != nil {
-			log.Errorf("recv message error: %v", err)
-			if errors.Is(err, mangos.ErrClosed) {
-				break
-			}
-
-			continue
-		}
-
-		if s.cfg.TraceMessage {
-			log.Debugf("recv message: event=%s header=%s data_size=%d",
-				protocol.EventName(protocol.PipeEvent(m.Pipe)), protocol.StringHeader(m.Header), len(m.Body))
-		}
-		h := protocol.Header{Data: m.Header}
-		if h.Dest() == protocol.PipeEbus {
-			m.Free()
-			continue
-		}
-
-		// router send
-		if err = s.socket.SendMsg(m); err != nil {
-			m.Free()
-			log.Errorf("send message: event=%s header=%s error=%v",
-				protocol.EventName(protocol.PipeEvent(m.Pipe)), protocol.StringHeader(m.Header), err)
-		}
-	}
+	s.proto.Exchange()
 }
 
 func (s *Server) Close() error {
@@ -232,6 +207,7 @@ func (s *Server) Close() error {
 
 func (s *Server) Stop() {
 	_ = s.Close()
-	s.wg.Wait()
+	s.proto = nil
+	s.socket = nil
 	log.Infof("event bus stopped")
 }

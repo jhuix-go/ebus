@@ -108,9 +108,7 @@ func (s *socket) OpenContext() (mangos.Context, error) {
 }
 
 func (s *socket) SetPipeEventHook(h PipeEventHook) {
-	if s.proto != nil {
-		s.proto.SetPipeEventHook(h)
-	}
+	s.proto.SetPipeEventHook(h)
 }
 
 // MakeSocket creates a Socket on top of a Protocol.

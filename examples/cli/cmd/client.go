@@ -199,7 +199,7 @@ var cltSendCmd = &grumble.Command{
 			return err
 		}
 
-		log.Infof("send event message succeed: %s(%d)->%s(%d) %s", srcArg, src, destArg, dest, data)
+		log.Infof("send event message succeed: %s(%d)->%s(%s) %s", srcArg, src, destArg, protocol.InetNtoA(dest), data)
 		return nil
 	},
 }
