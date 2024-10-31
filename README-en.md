@@ -59,7 +59,7 @@ There are 8 bits of protocol signaling, the upper 4 bits are the control class b
 |Reserve<br>(2bits)| The highest two digits are reserved. |
 |Control<br>(1bit)| If it is a control command between the event bus (ebus) and the event connection, the control bit is true, and vice versa. |
 |Event<br>(1bit)| Whether the destination is an event or not, if the destination is identified as an event ID, then the event bit is true, and vice versa. |
-|Command<br>(4bits)| Command, see Signaling Command Definition for details.|
+|Command<br>(4bits)| Command, see Signaling command definition for details.|
 
 ### Signaling command definition
 
@@ -88,9 +88,9 @@ When the control bit of the signaling is false and the event bit is true, the co
 | 0x1 | Hash picked, which selects a microservice from the hash of the microservice for the same event. |
 | 0x2 | Circular loop picked, polling a microservice from the microservices of the same event in turn. |
 
-## Data flow mode
+## Data Transport Mode
 
-The data flow interaction modes between microservices or other microservices through the event bus service can be divided into control command interaction, direct transport, random transport, hash transport, and round transport mode.
+The data transport modes between microservices or other microservices through the event bus service can be divided into control command interaction, direct transport, random transport, hash transport, and round transport mode.
 
 * The signaling values for each mode are as follows:
 
