@@ -134,19 +134,19 @@
 
 - windows
     
-    mkdir go/src/github.com/jhuix-go
-    cd go/src/github.com/jhuix-go
-    git clone https://githun.com/jhuix-go/ebus.git
-    cd ebus/build
-    build.bat
+        mkdir go/src/github.com/jhuix-go
+        cd go/src/github.com/jhuix-go
+        git clone https://githun.com/jhuix-go/ebus.git
+        cd ebus/build
+        build.bat
 
 - linux
 
-    mkdir -p go/src/github.com/jhuix-go
-    cd go/src/github.com/jhuix-go
-    git clone https://githun.com/jhuix-go/ebus.git
-    cd ebus/build
-    ./build.sh
+        mkdir -p go/src/github.com/jhuix-go
+        cd go/src/github.com/jhuix-go
+        git clone https://githun.com/jhuix-go/ebus.git
+        cd ebus/build
+        ./build.sh
 
 ## 开源协议
 
