@@ -8,6 +8,6 @@ data_error_continue = true
 [discovery]
 name = "event"
 id = "bus"
-address = "tcp://ebus.service.my:8171"
+address = "tcp://127.0.0.1:8171"
 endpoints = ["{\"address\":\"http://127.0.0.1:6500\",\"datacenter\":\"dev\"}"]
 ttl = "30s"
